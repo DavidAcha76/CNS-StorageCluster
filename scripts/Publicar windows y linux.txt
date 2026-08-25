@@ -1,0 +1,5 @@
+win
+dotnet publish .\CNS.StorageCluster.Client.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\Publicados\Windows
+
+Linux
+dotnet publish .\CNS.StorageCluster.Client.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o .\Publicados\Linux
