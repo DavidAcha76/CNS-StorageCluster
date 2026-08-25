@@ -1,0 +1,281 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CNS.StorageCluster.Client.MainWindow"
+        Title="CNS Storage Operations"
+        Width="1180" Height="790" MinWidth="980" MinHeight="700"
+        Background="#EDF1F4">
+  <Grid RowDefinitions="72,*">
+    <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#D7DEE5" BorderThickness="0,0,0,1" Padding="28,0">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+        <Border Width="34" Height="34" Background="#0B6E69" CornerRadius="6" VerticalAlignment="Center">
+          <TextBlock Text="C" Foreground="White" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+          <TextBlock Text="CNS STORAGE OPERATIONS" Foreground="#13212B" FontSize="15" FontWeight="Bold"/>
+          <TextBlock Text="Consola regional de telemetría" Foreground="#60707C" FontSize="12"/>
+        </StackPanel>
+        <Border Grid.Column="2" Background="#F4F7F8" BorderBrush="#D7E1E2" BorderThickness="1" CornerRadius="6" Padding="11,7" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Border x:Name="ConnectionIndicator" Width="8" Height="8" Background="#8A98A3" CornerRadius="4" VerticalAlignment="Center"/>
+            <TextBlock x:Name="ConnectionBadge" Text="DESCONECTADO" Foreground="#33414B" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Border>
+
+    <Grid Grid.Row="1" Margin="24" ColumnDefinitions="300,*">
+      <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#D7DEE5" BorderThickness="1" CornerRadius="6" Padding="20">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="18">
+          <StackPanel Spacing="4">
+            <TextBlock Text="CONFIGURACIÓN DEL NODO" Classes="eyebrow"/>
+            <TextBlock Text="Conexión" Classes="panelTitle"/>
+            <TextBlock Text="Define la regional y el canal de comunicación." Classes="bodyMuted" TextWrapping="Wrap"/>
+          </StackPanel>
+
+          <StackPanel Grid.Row="1" Spacing="14">
+            <StackPanel Spacing="6">
+              <TextBlock Text="Regional operativa" Classes="fieldLabel"/>
+              <ComboBox x:Name="RegionCombo" MinHeight="40">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <TextBlock Text="{Binding Code}" Foreground="#0B6E69" FontWeight="Bold"/>
+                      <TextBlock Text="{Binding Name}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Servidor central" Classes="fieldLabel"/>
+              <TextBox x:Name="ServerHostText" IsReadOnly="True"/>
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+              <TextBlock Text="Puerto de transporte" Classes="fieldLabel"/>
+              <TextBox x:Name="ServerPortText"/>
+              <TextBlock Text="443 usa el canal WSS publicado. 5050 conserva TCP directo en LAN." Classes="bodyMuted" FontSize="11" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+              <Button Grid.Column="0" x:Name="ConnectButton" Content="Conectar nodo" Click="Connect_Click" Classes="primary"/>
+              <Button Grid.Column="1" x:Name="DisconnectButton" Content="Desconectar" Click="Disconnect_Click" Classes="secondary" IsEnabled="False"/>
+            </Grid>
+          </StackPanel>
+
+          <Border Grid.Row="2" Background="#F4F7F8" BorderBrush="#DCE5E7" BorderThickness="1" CornerRadius="5" Padding="12">
+            <StackPanel Spacing="3">
+              <TextBlock Text="CANAL CONFIGURADO" Classes="eyebrow"/>
+              <TextBlock Text="WSS · TLS · JSON" Foreground="#183943" FontSize="13" FontWeight="SemiBold"/>
+              <TextBlock Text="Mensajes y confirmaciones permanecen cifrados en tránsito." Classes="bodyMuted" FontSize="11" TextWrapping="Wrap"/>
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <ScrollViewer Grid.Column="1" Margin="20,0,0,0">
+        <StackPanel Spacing="18">
+          <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+            <StackPanel Spacing="4">
+              <TextBlock Text="VISTA OPERATIVA" Classes="eyebrow"/>
+              <TextBlock Text="Telemetría de almacenamiento" Foreground="#13212B" FontSize="26" FontWeight="SemiBold"/>
+              <TextBlock Text="Estado y capacidad del primer volumen detectado en el equipo regional." Classes="bodyMuted"/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="3">
+              <TextBlock Text="ÚLTIMA ACTUALIZACIÓN" Classes="eyebrow" HorizontalAlignment="Right"/>
+              <TextBlock x:Name="LastReportText" Text="Sin reportes" Foreground="#33414B" FontSize="13" FontWeight="SemiBold" HorizontalAlignment="Right"/>
+            </StackPanel>
+          </Grid>
+
+          <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
+            <Border Grid.Column="0" Classes="metricCard">
+              <StackPanel Spacing="6">
+                <TextBlock Text="VOLUMEN" Classes="metricLabel"/>
+                <TextBlock x:Name="DiskNameText" Text="Sin detección" Classes="metricValue" TextTrimming="CharacterEllipsis"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="metricCard">
+              <StackPanel Spacing="6">
+                <TextBlock Text="TECNOLOGÍA" Classes="metricLabel"/>
+                <TextBlock x:Name="DiskTypeText" Text="-" Classes="metricValue"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="metricCard">
+              <StackPanel Spacing="6">
+                <TextBlock Text="CAPACIDAD" Classes="metricLabel"/>
+                <TextBlock x:Name="TotalText" Text="0 GB" Classes="metricValue"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="3" Classes="metricCard">
+              <StackPanel Spacing="6">
+                <TextBlock Text="OCUPACIÓN" Classes="metricLabel"/>
+                <TextBlock x:Name="UsageText" Text="0 %" Classes="metricValue"/>
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <Grid ColumnDefinitions="1.45*,*" ColumnSpacing="18">
+            <Border Grid.Column="0" Classes="surface">
+              <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="18">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="3">
+                    <TextBlock Text="Capacidad del volumen" Classes="panelTitle"/>
+                    <TextBlock Text="Distribución de uso y disponibilidad." Classes="bodyMuted"/>
+                  </StackPanel>
+                  <TextBlock x:Name="FreeText" Grid.Column="1" Text="0 GB libres" Foreground="#0B6E69" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Grid>
+
+                <ProgressBar x:Name="UtilizationBar" Grid.Row="1" Minimum="0" Maximum="100" Value="0" Height="9" Classes="utilization"/>
+
+                <Grid Grid.Row="2" ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                  <StackPanel Spacing="4">
+                    <TextBlock Text="ESPACIO UTILIZADO" Classes="metricLabel"/>
+                    <TextBlock x:Name="UsedText" Text="0 GB" Foreground="#13212B" FontSize="20" FontWeight="SemiBold"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="4">
+                    <TextBlock Text="IOPS" Classes="metricLabel"/>
+                    <TextBlock x:Name="IopsOnlyText" Text="0" Foreground="#13212B" FontSize="20" FontWeight="SemiBold"/>
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="4">
+                    <TextBlock Text="LATENCIA" Classes="metricLabel"/>
+                    <TextBlock x:Name="LatencyText" Text="0 ms" Foreground="#13212B" FontSize="20" FontWeight="SemiBold"/>
+                  </StackPanel>
+                </Grid>
+              </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Classes="surface">
+              <StackPanel Spacing="12">
+                <TextBlock Text="Cadencia de reporte" Classes="panelTitle"/>
+                <TextBlock Text="Intervalo de envío" Classes="fieldLabel"/>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBox x:Name="IntervalText" Grid.Column="0"/>
+                  <TextBlock Grid.Column="1" Text="seg." Foreground="#60707C" VerticalAlignment="Center"/>
+                </Grid>
+                <Button Content="Aplicar intervalo" Click="ApplyInterval_Click" Classes="secondary"/>
+              </StackPanel>
+            </Border>
+          </Grid>
+
+          <Border Classes="surface">
+            <Grid RowDefinitions="Auto,*" RowSpacing="14">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Actividad del nodo" Classes="panelTitle"/>
+                  <TextBlock Text="Mensajes recibidos, reconexiones y confirmaciones del protocolo." Classes="bodyMuted"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="Limpiar" Click="ClearLog_Click" Classes="quiet" VerticalAlignment="Top"/>
+              </Grid>
+              <ListBox Grid.Row="1" x:Name="LogList" Height="218" Classes="activityList"/>
+            </Grid>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+  </Grid>
+
+  <Window.Styles>
+    <Style Selector="TextBox">
+      <Setter Property="Background" Value="#FFFFFF"/>
+      <Setter Property="Foreground" Value="#17212B"/>
+      <Setter Property="BorderBrush" Value="#C7D1D8"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Padding" Value="10,8"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="Background" Value="#FFFFFF"/>
+      <Setter Property="Foreground" Value="#17212B"/>
+      <Setter Property="BorderBrush" Value="#C7D1D8"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Padding" Value="8,6"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="MinHeight" Value="38"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="13"/>
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="Background" Value="#0B6E69"/>
+      <Setter Property="Foreground" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#0B6E69"/>
+    </Style>
+    <Style Selector="Button.secondary">
+      <Setter Property="Background" Value="#FFFFFF"/>
+      <Setter Property="Foreground" Value="#23444C"/>
+      <Setter Property="BorderBrush" Value="#AABCC2"/>
+    </Style>
+    <Style Selector="Button.quiet">
+      <Setter Property="Background" Value="#F4F7F8"/>
+      <Setter Property="Foreground" Value="#46616A"/>
+      <Setter Property="BorderBrush" Value="#D7E1E2"/>
+      <Setter Property="MinHeight" Value="32"/>
+      <Setter Property="Padding" Value="12,5"/>
+    </Style>
+    <Style Selector="Border.metricCard">
+      <Setter Property="Background" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#D7DEE5"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="16"/>
+      <Setter Property="MinHeight" Value="102"/>
+    </Style>
+    <Style Selector="Border.surface">
+      <Setter Property="Background" Value="#FFFFFF"/>
+      <Setter Property="BorderBrush" Value="#D7DEE5"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Padding" Value="20"/>
+    </Style>
+    <Style Selector="TextBlock.eyebrow">
+      <Setter Property="Foreground" Value="#0B6E69"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="LetterSpacing" Value="0.4"/>
+    </Style>
+    <Style Selector="TextBlock.panelTitle">
+      <Setter Property="Foreground" Value="#13212B"/>
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TextBlock.fieldLabel">
+      <Setter Property="Foreground" Value="#40515C"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="TextBlock.bodyMuted">
+      <Setter Property="Foreground" Value="#6B7B86"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="TextBlock.metricLabel">
+      <Setter Property="Foreground" Value="#6B7B86"/>
+      <Setter Property="FontSize" Value="10"/>
+      <Setter Property="FontWeight" Value="Bold"/>
+      <Setter Property="LetterSpacing" Value="0.4"/>
+    </Style>
+    <Style Selector="TextBlock.metricValue">
+      <Setter Property="Foreground" Value="#13212B"/>
+      <Setter Property="FontSize" Value="19"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+    <Style Selector="ProgressBar.utilization">
+      <Setter Property="Foreground" Value="#0B6E69"/>
+      <Setter Property="Background" Value="#E4ECEE"/>
+      <Setter Property="CornerRadius" Value="5"/>
+    </Style>
+    <Style Selector="ListBox.activityList">
+      <Setter Property="Background" Value="#F7F9FA"/>
+      <Setter Property="BorderBrush" Value="#DCE4E8"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Padding" Value="5"/>
+      <Setter Property="Foreground" Value="#33414B"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+  </Window.Styles>
+</Window>

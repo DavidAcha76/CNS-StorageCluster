@@ -1,0 +1,23 @@
+# Checklist antes de entregar / defender
+
+- [ ] Cambiar la cadena de conexión de SQL Server si no se usará LocalDB.
+- [ ] Confirmar que `distribuidos.hermesoft.com` resuelve al servidor correcto.
+- [ ] Abrir `5050/TCP` para sockets y publicar la web en el dominio.
+- [ ] Si la defensa exige LAN estricta, usar DNS local/hosts para que `distribuidos.hermesoft.com` resuelva a la IP privada del servidor.
+- [ ] Ejecutar servidor y abrir dashboard.
+- [ ] Ejecutar un cliente real en Windows.
+- [ ] Ejecutar un cliente real en Linux.
+- [ ] Verificar registro automático de ambos nodos.
+- [ ] Verificar total/usado/libre/SSD-HDD/IOPS/timestamp.
+- [ ] Verificar historial en SQL Server.
+- [ ] Desconectar un cliente y esperar `NO REPORTA`.
+- [ ] Reconectarlo y verificar regreso a `ACTIVO`.
+- [ ] Enviar mensaje personalizado y verificar archivo `.log` + ACK.
+- [ ] Cambiar intervalo desde el servidor y verificar ACK.
+- [ ] Cambiar intervalo desde el cliente y verificar actualización en servidor.
+- [ ] Mostrar Growth Rate, Uptime, Availability, failovers, activos/totales y latencia ponderada.
+- [ ] Completar nombres y roles del microinforme.
+- [ ] Completar cronograma/cutoff real.
+- [ ] Completar URL de Git y Trello.
+- [ ] Incorporar caracterización del equipo según el reglamento externo.
+- [ ] Preparar al equipo para los 2 requerimientos sorpresa de la defensa.

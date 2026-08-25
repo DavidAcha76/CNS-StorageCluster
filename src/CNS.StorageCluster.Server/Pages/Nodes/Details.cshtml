@@ -1,0 +1,191 @@
+@page
+@model CNS.StorageCluster.Server.Pages.Nodes.DetailsModel
+@{
+    ViewData["Title"] = Model.Node.Name;
+    var n = Model.Node;
+    var online = n.Status == NodeStates.Online;
+    var availabilityOk = n.AvailabilityPercent >= 99.9;
+    var uptime = TimeSpan.FromSeconds(Math.Max(0, n.UptimeSeconds));
+    var uptimeText = $"{(int)uptime.TotalDays}d {uptime.Hours:00}:{uptime.Minutes:00}:{uptime.Seconds:00}";
+}
+
+<div class="back-row"><a asp-page="/Index">← Volver al dashboard</a></div>
+
+@if (TempData["Flash"] is string flash)
+{
+    <div class="flash @(TempData["FlashOk"] is bool ok && ok ? "success" : "error")">@flash</div>
+}
+
+<section class="node-header">
+    <div>
+        <span class="node-code">@n.Code</span>
+        <h1>@n.Name</h1>
+        <p>@(n.MachineName ?? "Cliente aún no registrado") · @(n.OperatingSystem ?? "-")</p>
+    </div>
+    <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "NO REPORTA")</span>
+</section>
+
+<section class="summary-grid">
+    <article class="summary-card"><span>Total Capacity</span><strong>@n.TotalGb.ToString("N1") GB</strong></article>
+    <article class="summary-card"><span>Used Capacity</span><strong>@n.UsedGb.ToString("N1") GB</strong></article>
+    <article class="summary-card"><span>Free Capacity</span><strong>@n.FreeGb.ToString("N1") GB</strong></article>
+    <article class="summary-card"><span>% Utilization</span><strong>@n.UtilizationPercent.ToString("N1")%</strong></article>
+    <article class="summary-card"><span>IOPS @(n.IopsSimulated ? "(sim.)" : "")</span><strong>@n.Iops.ToString("N0")</strong></article>
+    <article class="summary-card"><span>Latencia actual</span><strong>@n.LatestLatencyMs.ToString("N1") ms</strong></article>
+</section>
+
+<section class="two-col">
+    <article class="panel">
+        <div class="panel-title"><h2>Historial de utilización</h2><span>Últimos @n.History.Count reportes</span></div>
+        <canvas id="historyChart" height="260"></canvas>
+    </article>
+    <article class="panel">
+        <h2>Disponibilidad y almacenamiento</h2>
+        <dl class="details-list">
+            <div><dt>Disco reportado</dt><dd>@n.DiskName</dd></div>
+            <div><dt>Tipo</dt><dd>@n.DiskType</dd></div>
+            <div><dt>Uptime acumulado</dt><dd>@uptimeText</dd></div>
+            <div><dt>Availability</dt><dd>@n.AvailabilityPercent.ToString("N3")% · @(availabilityOk ? "CUMPLE ≥99.9%" : "NO CUMPLE 99.9%")</dd></div>
+            <div><dt>Failover events</dt><dd>@n.FailoverEvents</dd></div>
+            <div><dt>Growth Rate</dt><dd>@n.GrowthGbPerDay.ToString("N2") GB/día · @n.GrowthGbPerMonth.ToString("N2") GB/mes</dd></div>
+            <div><dt>Latencia promedio</dt><dd>@n.AverageLatencyMs.ToString("N1") ms</dd></div>
+            <div><dt>Intervalo de reporte</dt><dd>@n.ReportIntervalSeconds s</dd></div>
+            <div><dt>Primera conexión</dt><dd>@(n.FirstSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "Nunca")</dd></div>
+            <div><dt>Último reporte</dt><dd>@(n.LastSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "Nunca")</dd></div>
+            <div><dt>Overcommit Ratio</dt><dd>No aplica · sin thin provisioning</dd></div>
+            <div><dt>Storage Pool Fragmentation</dt><dd>No aplica · sin pool físico compartido</dd></div>
+            <div><dt>Estado del Quorum</dt><dd>No aplica · sin consenso</dd></div>
+            <div><dt>Replication Health</dt><dd>No aplica · sin replicación</dd></div>
+        </dl>
+    </article>
+</section>
+
+<section class="two-col">
+    <article class="panel">
+        <h2>Enviar mensaje al cliente</h2>
+        <form method="post" asp-page-handler="SendCommand" class="stack-form">
+            <input type="hidden" name="code" value="@n.Code" />
+            <label>Mensaje personalizado</label>
+            <textarea name="message" required rows="3" maxlength="900" placeholder="Ej.: Verifique espacio en disco"></textarea>
+            <div class="quick-actions">
+                <button type="button" data-msg="Reinicie servicio">Reinicie servicio</button>
+                <button type="button" data-msg="Verifique espacio en disco">Verifique espacio</button>
+                <button type="button" data-msg="Actualización de configuración">Actualización</button>
+            </div>
+            <button class="primary" type="submit">Enviar por TCP</button>
+        </form>
+        <p class="muted">El cliente lo muestra, lo guarda en archivo .log y responde ACK.</p>
+    </article>
+
+    <article class="panel">
+        <h2>Configurar intervalo desde servidor</h2>
+        <form method="post" asp-page-handler="SetInterval" class="stack-form">
+            <input type="hidden" name="code" value="@n.Code" />
+            <label>Segundos entre reportes</label>
+            <input name="seconds" type="number" min="2" max="3600" value="@n.ReportIntervalSeconds" required />
+            <button class="primary" type="submit">Enviar configuración</button>
+        </form>
+        <p class="muted">La configuración viaja por el mismo Socket TCP; el cliente la aplica y responde ACK.</p>
+    </article>
+</section>
+
+<section class="panel">
+    <div class="panel-title"><h2>Historial de métricas</h2><span>Persistencia SQL Server</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Fecha/hora</th><th>Total</th><th>Usado</th><th>Libre</th><th>Uso</th><th>IOPS</th><th>Latencia</th></tr></thead>
+            <tbody>
+            @foreach (var m in n.History.OrderByDescending(x => x.TimestampUtc).Take(30))
+            {
+                <tr>
+                    <td>@m.TimestampUtc.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                    <td>@m.TotalGb.ToString("N1") GB</td>
+                    <td>@m.UsedGb.ToString("N1") GB</td>
+                    <td>@m.FreeGb.ToString("N1") GB</td>
+                    <td>@m.UtilizationPercent.ToString("N1")%</td>
+                    <td>@m.Iops.ToString("N0")@(m.IopsSimulated ? "*" : "")</td>
+                    <td>@m.LatencyMs.ToString("N1") ms</td>
+                </tr>
+            }
+            @if (n.History.Count == 0) { <tr><td colspan="7">Todavía no hay métricas almacenadas.</td></tr> }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">* IOPS simulado cuando no se dispone de una medición portable directa, permitido por el enunciado.</p>
+</section>
+
+<section class="two-col">
+    <article class="panel">
+        <div class="panel-title"><h2>Eventos del nodo</h2><span>ACTIVO / NO REPORTA</span></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Fecha</th><th>Evento</th><th>Detalle</th></tr></thead>
+                <tbody>
+                @foreach (var e in n.Events.OrderByDescending(x => x.TimestampUtc).Take(25))
+                {
+                    <tr><td>@e.TimestampUtc.ToLocalTime().ToString("dd/MM HH:mm:ss")</td><td>@e.EventType</td><td>@e.Detail</td></tr>
+                }
+                @if (n.Events.Count == 0) { <tr><td colspan="3">Sin eventos registrados.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="panel-title"><h2>Mensajes y ACK</h2><span>Últimos 30</span></div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Fecha</th><th>Tipo</th><th>Contenido</th><th>Estado</th><th>ACK</th></tr></thead>
+                <tbody>
+                @foreach (var c in n.Commands)
+                {
+                    <tr>
+                        <td>@c.SentAtUtc.ToLocalTime().ToString("dd/MM HH:mm:ss")</td>
+                        <td>@c.Kind</td>
+                        <td>@c.Payload</td>
+                        <td>@c.Status</td>
+                        <td>@(c.AckAtUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</td>
+                    </tr>
+                }
+                @if (n.Commands.Count == 0) { <tr><td colspan="5">Todavía no se enviaron mensajes.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+    </article>
+</section>
+
+@section Scripts {
+<script>
+const historyData = @Html.Raw(Model.HistoryJson);
+const canvas = document.getElementById('historyChart');
+const ctx = canvas.getContext('2d');
+function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = canvas.clientWidth;
+    const cssHeight = 260;
+    canvas.width = cssWidth * dpr; canvas.height = cssHeight * dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,cssWidth,cssHeight);
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border');
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+    ctx.font = '12px system-ui';
+    [0,25,50,75,100].forEach(v => {
+        const y = 220 - v * 1.8;
+        ctx.beginPath(); ctx.moveTo(38,y); ctx.lineTo(cssWidth-12,y); ctx.stroke();
+        ctx.fillText(v+'%', 4, y+4);
+    });
+    if (historyData.length < 2) { ctx.fillText('Esperando más métricas...', 48, 120); return; }
+    ctx.strokeStyle = '#12b76a'; ctx.lineWidth = 3; ctx.beginPath();
+    historyData.forEach((p,i) => {
+        const x = 42 + i * ((cssWidth-60)/(historyData.length-1));
+        const y = 220 - Math.max(0, Math.min(100,p.u))*1.8;
+        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+}
+draw(); window.addEventListener('resize', draw);
+document.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', () => {
+    document.querySelector('textarea[name=message]').value = b.dataset.msg;
+}));
+</script>
+}

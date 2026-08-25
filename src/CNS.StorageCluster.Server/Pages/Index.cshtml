@@ -1,0 +1,91 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Dashboard";
+    var s = Model.Snapshot;
+}
+
+<section class="hero">
+    <div>
+        <div class="eyebrow">MONITOREO CENTRALIZADO</div>
+        <h1>Estado general del cluster</h1>
+        <p>9 regionales CNS · TCP/IP bidireccional · persistencia histórica · servidor: <strong>distribuidos.hermesoft.com</strong></p>
+    </div>
+    <div class="refresh-box">
+        <label for="refreshSeconds">Auto-refresh</label>
+        <select id="refreshSeconds">
+            <option value="2">2 s</option>
+            <option value="5" selected>5 s</option>
+            <option value="10">10 s</option>
+            <option value="30">30 s</option>
+            <option value="60">60 s</option>
+        </select>
+    </div>
+</section>
+
+<section class="summary-grid">
+    <article class="summary-card"><span>Total Capacity</span><strong>@s.TotalGb.ToString("N1") GB</strong></article>
+    <article class="summary-card"><span>Used Capacity</span><strong>@s.UsedGb.ToString("N1") GB</strong></article>
+    <article class="summary-card"><span>Free Capacity</span><strong>@s.FreeGb.ToString("N1") GB</strong></article>
+    <article class="summary-card"><span>% utilización global</span><strong>@s.UtilizationPercent.ToString("N1")%</strong></article>
+    <article class="summary-card"><span>Nodos activos / totales</span><strong>@s.ActiveNodes / @s.TotalNodes</strong></article>
+    <article class="summary-card"><span>Latencia ponderada</span><strong>@s.WeightedLatencyMs.ToString("N1") ms</strong></article>
+    <article class="summary-card"><span>Availability promedio</span><strong>@s.AvailabilityPercent.ToString("N3")%</strong></article>
+</section>
+
+<section class="section-head">
+    <div>
+        <h2>Servidores regionales</h2>
+        <p>El dashboard siempre representa exactamente las 9 regionales. Los clientes que superan el timeout aparecen como “NO REPORTA”.</p>
+    </div>
+</section>
+
+<section class="node-grid">
+@foreach (var node in s.Nodes)
+{
+    var online = node.Status == NodeStates.Online;
+    var level = !online ? "offline" : node.UtilizationPercent >= 85 ? "danger" : node.UtilizationPercent >= 70 ? "warning" : "ok";
+    <a class="node-card @level" asp-page="/Nodes/Details" asp-route-code="@node.Code">
+        <div class="node-top">
+            <div><span class="node-code">@node.Code</span><h3>@node.Name</h3></div>
+            <span class="status @(online ? "online" : "offline")">@(online ? "ACTIVO" : "NO REPORTA")</span>
+        </div>
+        @if (node.TotalGb > 0)
+        {
+            <div class="disk-name">@node.DiskName · @node.DiskType</div>
+            <div class="metric-line"><span>@node.UsedGb.ToString("N1") / @node.TotalGb.ToString("N1") GB</span><b>@node.UtilizationPercent.ToString("N1")%</b></div>
+            <div class="progress"><span style="width:@Math.Min(100, node.UtilizationPercent).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)%"></span></div>
+            <div class="node-foot"><span>@node.FreeGb.ToString("N1") GB libres</span><span>@node.Iops.ToString("N0") IOPS · @node.LatencyMs.ToString("N1") ms</span></div>
+            <div class="node-foot"><span>Availability @node.AvailabilityPercent.ToString("N3")%</span><span>cada @node.ReportIntervalSeconds s</span></div>
+        }
+        else
+        {
+            <div class="empty-node">Esperando el primer reporte del cliente.</div>
+        }
+    </a>
+}
+</section>
+
+<section class="note-panel">
+    <strong>Indicadores del documento que no aplican al cluster lógico:</strong>
+    Overcommit Ratio = No aplica (sin thin provisioning), Storage Pool Fragmentation = No aplica (no existe un pool físico compartido), Estado del Quorum = No aplica (sin consenso) y Replication Health = No aplica (sin replicación física). Los demás KPIs solicitados se calculan con las métricas y eventos registrados.
+</section>
+
+@section Scripts {
+<script>
+(() => {
+    const select = document.getElementById('refreshSeconds');
+    const saved = localStorage.getItem('clusterRefreshSeconds');
+    if (saved) select.value = saved;
+    let timer;
+    function schedule() {
+        clearTimeout(timer);
+        const seconds = Math.max(2, Number(select.value || 5));
+        localStorage.setItem('clusterRefreshSeconds', seconds);
+        timer = setTimeout(() => location.reload(), seconds * 1000);
+    }
+    select.addEventListener('change', schedule);
+    schedule();
+})();
+</script>
+}
