@@ -9,8 +9,8 @@ Cliente-servidor con monitoreo centralizado. Los clientes regionales ejecutan un
 1. Cliente abre `TcpClient` hacia `distribuidos.hermesoft.com:5050`.
 2. Envía `REGISTER`.
 3. Servidor valida que sea una de las nueve regionales y la registra automáticamente en BD.
-4. Cliente obtiene el primer disco y envía `METRICS` periódicamente.
-5. Servidor guarda el histórico y actualiza `LastSeen`/estado.
+4. Cliente lee todos los discos disponibles y envía un único `METRICS` con sus lecturas periódicamente.
+5. Servidor guarda una fila por disco, consolida el ciclo completo y actualiza `LastSeen`/estado.
 6. Servidor puede enviar `COMMAND` o `CONFIG_INTERVAL`.
 7. Cliente muestra el mensaje/configuración, lo guarda en `.log` y responde `ACK`.
 8. Servidor persiste el ACK.

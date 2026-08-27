@@ -114,7 +114,7 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
             var metrics = await _metricsProvider.ReadAsync(nodeCode, host, ct);
             await SendAsync(metrics, ct);
             MetricsProduced?.Invoke(metrics);
-            Log?.Invoke($"Metricas enviadas: {metrics.UtilizationPercent:N1}% usado, {metrics.FreeGb:N1} GB libres.");
+            Log?.Invoke($"Metricas enviadas: {metrics.DiskCount} disco(s) leídos.");
             await Task.Delay(TimeSpan.FromSeconds(Volatile.Read(ref _reportIntervalSeconds)), ct);
         }
     }

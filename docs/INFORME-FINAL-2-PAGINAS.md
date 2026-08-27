@@ -4,7 +4,7 @@
 
 ## 1. Implementación realizada
 
-Se implementó un Storage Cluster lógico con monitoreo centralizado compuesto por nueve identidades regionales y un nodo central. Los clientes son aplicaciones gráficas multiplataforma desarrolladas con Avalonia UI y .NET 10, capaces de ejecutarse en Windows y Linux. Cada cliente obtiene las métricas del primer disco disponible: nombre, tipo SSD/HDD, capacidad total, espacio utilizado, espacio libre, porcentaje de utilización, IOPS simulado y fecha/hora del reporte.
+Se implementó un Storage Cluster lógico con monitoreo centralizado compuesto por nueve identidades regionales y un nodo central. Los clientes son aplicaciones gráficas multiplataforma desarrolladas con Avalonia UI y .NET 10, capaces de ejecutarse en Windows y Linux. Cada cliente obtiene las métricas de todos los discos disponibles: nombre, tipo SSD/HDD, capacidad total, espacio utilizado, espacio libre, porcentaje de utilización, IOPS simulado y fecha/hora del reporte. Un disco o volumen agregado se detecta automáticamente en el siguiente ciclo de lectura.
 
 La comunicación utiliza sockets TCP/IP bidireccionales. Al conectarse, el cliente envía un mensaje REGISTER; el servidor valida la regional, registra automáticamente el cliente en SQL Server y lo marca ACTIVO. Posteriormente recibe mensajes METRICS de forma periódica. El servidor atiende las conexiones concurrentemente mediante programación asíncrona. Si un nodo supera el timeout sin reportar, se registra el evento y pasa a NO_REPORTA.
 

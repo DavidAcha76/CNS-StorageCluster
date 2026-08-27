@@ -17,7 +17,7 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
         foreach (var region in RegionCatalog.All)
         {
             var node = nodes.FirstOrDefault(x => x.Code == region.Code);
-            latest.TryGetValue(region.Code, out var metric);
+            latest.TryGetValue(region.Code, out var report);
             var availability = node is null
                 ? 0
                 : await GetAvailabilityPercentAsync(db, node, ct);
@@ -27,15 +27,16 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
                 region.Name,
                 node?.Status ?? NodeStates.NoReporta,
                 node?.LastSeenUtc,
-                metric?.DiskName ?? "-",
-                metric?.DiskType ?? "-",
-                metric?.TotalGb ?? 0,
-                metric?.UsedGb ?? 0,
-                metric?.FreeGb ?? 0,
-                metric?.UtilizationPercent ?? 0,
-                metric?.Iops ?? 0,
-                metric?.IopsSimulated ?? true,
-                metric?.LatencyMs ?? 0,
+                report?.DiskCount ?? 0,
+                report?.DiskSummary ?? "-",
+                report?.DiskTypeSummary ?? "-",
+                report?.TotalGb ?? 0,
+                report?.UsedGb ?? 0,
+                report?.FreeGb ?? 0,
+                report?.UtilizationPercent ?? 0,
+                report?.Iops ?? 0,
+                report?.IopsSimulated ?? true,
+                report?.LatencyMs ?? 0,
                 node?.ReportIntervalSeconds ?? NetworkDefaults.DefaultReportIntervalSeconds,
                 availability));
         }
@@ -60,6 +61,7 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
             utilization,
             active,
             RegionCatalog.All.Count,
+            cards.Sum(x => x.DiskCount),
             weightedLatency,
             clusterAvailability);
     }
@@ -73,19 +75,48 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
         if (node is null)
         {
             return new NodeDetail(
-                region.Code, region.Name, NodeStates.NoReporta,
-                null, null, null, null, NetworkDefaults.DefaultReportIntervalSeconds,
-                null, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, "-", "-", 0, true, 0,
-                [], [], []);
+                Code: region.Code,
+                Name: region.Name,
+                Status: NodeStates.NoReporta,
+                MachineName: null,
+                OperatingSystem: null,
+                FirstSeenUtc: null,
+                LastSeenUtc: null,
+                ReportIntervalSeconds: NetworkDefaults.DefaultReportIntervalSeconds,
+                Latest: null,
+                GrowthGbPerDay: 0,
+                GrowthGbPerMonth: 0,
+                AvailabilityPercent: 0,
+                UptimeSeconds: 0,
+                FailoverEvents: 0,
+                AverageLatencyMs: 0,
+                DiskCount: 0,
+                TotalGb: 0,
+                UsedGb: 0,
+                FreeGb: 0,
+                UtilizationPercent: 0,
+                DiskName: "-",
+                DiskType: "-",
+                Iops: 0,
+                IopsSimulated: true,
+                LatestLatencyMs: 0,
+                CurrentDisks: [],
+                History: [],
+                Events: [],
+                Commands: []);
         }
 
-        var metrics = await db.Metrics.AsNoTracking()
+        // One database row is stored for each disk in a report cycle.
+        var metricRows = await db.Metrics.AsNoTracking()
             .Where(x => x.NodeId == node.Id)
             .OrderByDescending(x => x.TimestampUtc)
-            .Take(250)
-            .OrderBy(x => x.TimestampUtc)
+            .Take(1000)
             .ToListAsync(ct);
+        var history = metricRows
+            .GroupBy(x => x.TimestampUtc)
+            .OrderBy(x => x.Key)
+            .Select(x => CreateSnapshot(x.OrderBy(d => d.DiskName).ToList()))
+            .ToList();
 
         var events = await db.NodeEvents.AsNoTracking()
             .Where(x => x.NodeId == node.Id)
@@ -98,60 +129,86 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
             .Take(30)
             .ToListAsync(ct);
 
-        var latest = metrics.LastOrDefault();
-        var growthPerDay = CalculateGrowthPerDay(metrics);
+        var latest = history.LastOrDefault();
+        var growthPerDay = CalculateGrowthPerDay(history);
         var availability = CalculateAvailability(node, events);
         var failovers = events.Count(x => x.EventType == NodeStates.NoReporta);
 
         return new NodeDetail(
-            node.Code,
-            node.RegionName,
-            node.Status,
-            node.MachineName,
-            node.OperatingSystem,
-            node.FirstSeenUtc,
-            node.LastSeenUtc,
-            node.ReportIntervalSeconds,
-            latest,
-            growthPerDay,
-            growthPerDay * 30,
-            availability.Percentage,
-            availability.OnlineSeconds,
-            failovers,
-            metrics.Count == 0 ? 0 : metrics.Average(x => x.LatencyMs),
-            latest?.TotalGb ?? 0,
-            latest?.UsedGb ?? 0,
-            latest?.FreeGb ?? 0,
-            latest?.UtilizationPercent ?? 0,
-            latest?.DiskName ?? "-",
-            latest?.DiskType ?? "-",
-            latest?.Iops ?? 0,
-            latest?.IopsSimulated ?? true,
-            latest?.LatencyMs ?? 0,
-            metrics,
-            events,
-            commands);
+            Code: node.Code,
+            Name: node.RegionName,
+            Status: node.Status,
+            MachineName: node.MachineName,
+            OperatingSystem: node.OperatingSystem,
+            FirstSeenUtc: node.FirstSeenUtc,
+            LastSeenUtc: node.LastSeenUtc,
+            ReportIntervalSeconds: node.ReportIntervalSeconds,
+            Latest: latest,
+            GrowthGbPerDay: growthPerDay,
+            GrowthGbPerMonth: growthPerDay * 30,
+            AvailabilityPercent: availability.Percentage,
+            UptimeSeconds: availability.OnlineSeconds,
+            FailoverEvents: failovers,
+            AverageLatencyMs: history.Count == 0 ? 0 : history.Average(x => x.LatencyMs),
+            DiskCount: latest?.DiskCount ?? 0,
+            TotalGb: latest?.TotalGb ?? 0,
+            UsedGb: latest?.UsedGb ?? 0,
+            FreeGb: latest?.FreeGb ?? 0,
+            UtilizationPercent: latest?.UtilizationPercent ?? 0,
+            DiskName: latest?.DiskSummary ?? "-",
+            DiskType: latest?.DiskTypeSummary ?? "-",
+            Iops: latest?.Iops ?? 0,
+            IopsSimulated: latest?.IopsSimulated ?? true,
+            LatestLatencyMs: latest?.LatencyMs ?? 0,
+            CurrentDisks: latest?.Disks ?? [],
+            History: history,
+            Events: events,
+            Commands: commands);
     }
 
-    private static async Task<Dictionary<string, MetricRecord>> GetLatestMetricsAsync(AppDbContext db, CancellationToken ct)
+    private static async Task<Dictionary<string, MetricSnapshot>> GetLatestMetricsAsync(AppDbContext db, CancellationToken ct)
     {
-        var result = new Dictionary<string, MetricRecord>(StringComparer.OrdinalIgnoreCase);
+        var result = new Dictionary<string, MetricSnapshot>(StringComparer.OrdinalIgnoreCase);
         foreach (var region in RegionCatalog.All)
         {
-            var metric = await db.Metrics.AsNoTracking()
+            var latestTimestamp = await db.Metrics.AsNoTracking()
                 .Where(x => x.Node!.Code == region.Code)
                 .OrderByDescending(x => x.TimestampUtc)
+                .Select(x => (DateTime?)x.TimestampUtc)
                 .FirstOrDefaultAsync(ct);
-            if (metric is not null) result[region.Code] = metric;
+            if (latestTimestamp is null) continue;
+
+            var disks = await db.Metrics.AsNoTracking()
+                .Where(x => x.Node!.Code == region.Code && x.TimestampUtc == latestTimestamp.Value)
+                .OrderBy(x => x.DiskName)
+                .ToListAsync(ct);
+            if (disks.Count > 0) result[region.Code] = CreateSnapshot(disks);
         }
         return result;
     }
 
-    private static double CalculateGrowthPerDay(IReadOnlyList<MetricRecord> metrics)
+    private static MetricSnapshot CreateSnapshot(IReadOnlyList<MetricRecord> disks)
     {
-        if (metrics.Count < 2) return 0;
-        var first = metrics[0];
-        var last = metrics[^1];
+        var total = disks.Sum(x => x.TotalGb);
+        var used = disks.Sum(x => x.UsedGb);
+        var free = disks.Sum(x => x.FreeGb);
+        return new MetricSnapshot(
+            disks[0].TimestampUtc,
+            disks,
+            total,
+            used,
+            free,
+            total <= 0 ? 0 : used / total * 100,
+            disks.Sum(x => x.Iops),
+            disks.All(x => x.IopsSimulated),
+            disks.Average(x => x.LatencyMs));
+    }
+
+    private static double CalculateGrowthPerDay(IReadOnlyList<MetricSnapshot> reports)
+    {
+        if (reports.Count < 2) return 0;
+        var first = reports[0];
+        var last = reports[^1];
         var days = (last.TimestampUtc - first.TimestampUtc).TotalDays;
         if (days <= 0.00001) return 0;
         return (last.UsedGb - first.UsedGb) / days;
@@ -198,11 +255,28 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
 
 public sealed record AvailabilityStats(double Percentage, double OnlineSeconds);
 
+public sealed record MetricSnapshot(
+    DateTime TimestampUtc,
+    IReadOnlyList<MetricRecord> Disks,
+    double TotalGb,
+    double UsedGb,
+    double FreeGb,
+    double UtilizationPercent,
+    double Iops,
+    bool IopsSimulated,
+    double LatencyMs)
+{
+    public int DiskCount => Disks.Count;
+    public string DiskSummary => string.Join(", ", Disks.Select(x => x.DiskName));
+    public string DiskTypeSummary => string.Join(", ", Disks.Select(x => x.DiskType).Distinct(StringComparer.OrdinalIgnoreCase));
+}
+
 public sealed record NodeCard(
     string Code,
     string Name,
     string Status,
     DateTime? LastSeenUtc,
+    int DiskCount,
     string DiskName,
     string DiskType,
     double TotalGb,
@@ -223,6 +297,7 @@ public sealed record DashboardSnapshot(
     double UtilizationPercent,
     int ActiveNodes,
     int TotalNodes,
+    int DiskCount,
     double WeightedLatencyMs,
     double AvailabilityPercent);
 
@@ -235,13 +310,14 @@ public sealed record NodeDetail(
     DateTime? FirstSeenUtc,
     DateTime? LastSeenUtc,
     int ReportIntervalSeconds,
-    MetricRecord? Latest,
+    MetricSnapshot? Latest,
     double GrowthGbPerDay,
     double GrowthGbPerMonth,
     double AvailabilityPercent,
     double UptimeSeconds,
     int FailoverEvents,
     double AverageLatencyMs,
+    int DiskCount,
     double TotalGb,
     double UsedGb,
     double FreeGb,
@@ -251,6 +327,7 @@ public sealed record NodeDetail(
     double Iops,
     bool IopsSimulated,
     double LatestLatencyMs,
-    IReadOnlyList<MetricRecord> History,
+    IReadOnlyList<MetricRecord> CurrentDisks,
+    IReadOnlyList<MetricSnapshot> History,
     IReadOnlyList<NodeEvent> Events,
     IReadOnlyList<CommandRecord> Commands);

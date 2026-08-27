@@ -80,7 +80,7 @@
             <StackPanel Spacing="4">
               <TextBlock Text="VISTA OPERATIVA" Classes="eyebrow"/>
               <TextBlock Text="Telemetría de almacenamiento" Foreground="#13212B" FontSize="26" FontWeight="SemiBold"/>
-              <TextBlock Text="Estado y capacidad del primer volumen detectado en el equipo regional." Classes="bodyMuted"/>
+              <TextBlock Text="Estado y capacidad de todos los discos detectados en el equipo regional." Classes="bodyMuted"/>
             </StackPanel>
             <StackPanel Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="3">
               <TextBlock Text="ÚLTIMA ACTUALIZACIÓN" Classes="eyebrow" HorizontalAlignment="Right"/>
@@ -88,7 +88,7 @@
             </StackPanel>
           </Grid>
 
-          <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
+          <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="12">
             <Border Grid.Column="0" Classes="metricCard">
               <StackPanel Spacing="6">
                 <TextBlock Text="VOLUMEN" Classes="metricLabel"/>
@@ -111,6 +111,12 @@
               <StackPanel Spacing="6">
                 <TextBlock Text="OCUPACIÓN" Classes="metricLabel"/>
                 <TextBlock x:Name="UsageText" Text="0 %" Classes="metricValue"/>
+              </StackPanel>
+            </Border>
+            <Border Grid.Column="4" Classes="metricCard">
+              <StackPanel Spacing="6">
+                <TextBlock Text="DISCOS" Classes="metricLabel"/>
+                <TextBlock x:Name="DiskCountText" Text="0" Classes="metricValue"/>
               </StackPanel>
             </Border>
           </Grid>
@@ -157,6 +163,30 @@
               </StackPanel>
             </Border>
           </Grid>
+
+          <Border Classes="surface">
+            <Grid RowDefinitions="Auto,*" RowSpacing="12">
+              <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="3">
+                  <TextBlock Text="Discos detectados" Classes="panelTitle"/>
+                  <TextBlock Text="La lista se actualiza automaticamente en cada reporte." Classes="bodyMuted"/>
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding #DiskCountText.Text}" Foreground="#0B6E69" FontWeight="SemiBold" VerticalAlignment="Center"/>
+              </Grid>
+              <ListBox Grid.Row="1" x:Name="DiskList" Height="150" Classes="activityList">
+                <ListBox.ItemTemplate>
+                  <DataTemplate>
+                    <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="16" Margin="8,5">
+                      <TextBlock Text="{Binding DiskName}" Foreground="#13212B" FontWeight="SemiBold"/>
+                      <TextBlock Grid.Column="1" Text="{Binding DiskType}" Foreground="#60707C"/>
+                      <TextBlock Grid.Column="2" Text="{Binding UsedGb, StringFormat={}{0:N1} GB}" Foreground="#33414B"/>
+                      <TextBlock Grid.Column="3" Text="{Binding UtilizationPercent, StringFormat={}{0:N1}%}" Foreground="#0B6E69" FontWeight="SemiBold"/>
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </Grid>
+          </Border>
 
           <Border Classes="surface">
             <Grid RowDefinitions="Auto,*" RowSpacing="14">

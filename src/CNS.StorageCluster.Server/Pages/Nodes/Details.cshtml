@@ -32,6 +32,32 @@
     <article class="summary-card"><span>% Utilization</span><strong>@n.UtilizationPercent.ToString("N1")%</strong></article>
     <article class="summary-card"><span>IOPS @(n.IopsSimulated ? "(sim.)" : "")</span><strong>@n.Iops.ToString("N0")</strong></article>
     <article class="summary-card"><span>Latencia actual</span><strong>@n.LatestLatencyMs.ToString("N1") ms</strong></article>
+    <article class="summary-card"><span>Discos monitoreados</span><strong>@n.DiskCount</strong></article>
+</section>
+
+<section class="panel">
+    <div class="panel-title"><h2>Discos del ultimo reporte</h2><span>@n.DiskCount detectado(s)</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Disco</th><th>Tipo</th><th>Total</th><th>Usado</th><th>Libre</th><th>Uso</th><th>IOPS</th><th>Latencia</th></tr></thead>
+            <tbody>
+            @foreach (var disk in n.CurrentDisks)
+            {
+                <tr>
+                    <td>@disk.DiskName</td>
+                    <td>@disk.DiskType</td>
+                    <td>@disk.TotalGb.ToString("N1") GB</td>
+                    <td>@disk.UsedGb.ToString("N1") GB</td>
+                    <td>@disk.FreeGb.ToString("N1") GB</td>
+                    <td>@disk.UtilizationPercent.ToString("N1")%</td>
+                    <td>@disk.Iops.ToString("N0")@(disk.IopsSimulated ? "*" : "")</td>
+                    <td>@disk.LatencyMs.ToString("N1") ms</td>
+                </tr>
+            }
+            @if (n.CurrentDisks.Count == 0) { <tr><td colspan="8">Sin discos reportados todavia.</td></tr> }
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <section class="two-col">
@@ -42,8 +68,9 @@
     <article class="panel">
         <h2>Disponibilidad y almacenamiento</h2>
         <dl class="details-list">
-            <div><dt>Disco reportado</dt><dd>@n.DiskName</dd></div>
-            <div><dt>Tipo</dt><dd>@n.DiskType</dd></div>
+            <div><dt>Discos reportados</dt><dd>@n.DiskCount</dd></div>
+            <div><dt>Volúmenes</dt><dd>@n.DiskName</dd></div>
+            <div><dt>Tipos</dt><dd>@n.DiskType</dd></div>
             <div><dt>Uptime acumulado</dt><dd>@uptimeText</dd></div>
             <div><dt>Availability</dt><dd>@n.AvailabilityPercent.ToString("N3")% · @(availabilityOk ? "CUMPLE ≥99.9%" : "NO CUMPLE 99.9%")</dd></div>
             <div><dt>Failover events</dt><dd>@n.FailoverEvents</dd></div>

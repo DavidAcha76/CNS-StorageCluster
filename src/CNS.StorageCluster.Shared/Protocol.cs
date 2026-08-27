@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CNS.StorageCluster.Shared;
 
@@ -21,10 +22,7 @@ public sealed record RegisterMessage(
     string ClientVersion,
     int ReportIntervalSeconds);
 
-public sealed record MetricsMessage(
-    string Type,
-    string NodeCode,
-    DateTime TimestampUtc,
+public sealed record DiskMetrics(
     string DiskName,
     string DiskType,
     double TotalGb,
@@ -34,6 +32,30 @@ public sealed record MetricsMessage(
     double Iops,
     bool IopsSimulated,
     double LatencyMs);
+
+public sealed record MetricsMessage(
+    string Type,
+    string NodeCode,
+    DateTime TimestampUtc,
+    IReadOnlyList<DiskMetrics> Disks)
+{
+    [JsonIgnore]
+    public int DiskCount => Disks.Count;
+    [JsonIgnore]
+    public double TotalGb => Disks.Sum(x => x.TotalGb);
+    [JsonIgnore]
+    public double UsedGb => Disks.Sum(x => x.UsedGb);
+    [JsonIgnore]
+    public double FreeGb => Disks.Sum(x => x.FreeGb);
+    [JsonIgnore]
+    public double UtilizationPercent => TotalGb <= 0 ? 0 : UsedGb / TotalGb * 100;
+    [JsonIgnore]
+    public double Iops => Disks.Sum(x => x.Iops);
+    [JsonIgnore]
+    public bool IopsSimulated => Disks.All(x => x.IopsSimulated);
+    [JsonIgnore]
+    public double LatencyMs => Disks.Count == 0 ? 0 : Disks.Average(x => x.LatencyMs);
+}
 
 public sealed record CommandMessage(
     string Type,

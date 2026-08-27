@@ -115,7 +115,7 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
             var metrics = await _metricsProvider.ReadAsync(nodeCode, host, ct);
             await SendAsync(metrics, ct);
             MetricsProduced?.Invoke(metrics);
-            Log?.Invoke($"Métricas enviadas: {metrics.UtilizationPercent:N1}% usado, {metrics.FreeGb:N1} GB libres.");
+            Log?.Invoke($"Métricas enviadas: {metrics.DiskCount} disco(s) leídos.");
             await Task.Delay(TimeSpan.FromSeconds(Volatile.Read(ref _reportIntervalSeconds)), ct);
         }
     }

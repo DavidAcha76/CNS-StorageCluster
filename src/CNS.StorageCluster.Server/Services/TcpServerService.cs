@@ -312,20 +312,24 @@ public sealed class TcpServerService(
             });
         }
 
-        db.Metrics.Add(new MetricRecord
+        // Todos los discos comparten el mismo timestamp: representan un único ciclo de lectura.
+        foreach (var disk in msg.Disks)
         {
-            NodeId = node.Id,
-            TimestampUtc = msg.TimestampUtc,
-            DiskName = msg.DiskName,
-            DiskType = msg.DiskType,
-            TotalGb = msg.TotalGb,
-            UsedGb = msg.UsedGb,
-            FreeGb = msg.FreeGb,
-            UtilizationPercent = msg.UtilizationPercent,
-            Iops = msg.Iops,
-            IopsSimulated = msg.IopsSimulated,
-            LatencyMs = msg.LatencyMs
-        });
+            db.Metrics.Add(new MetricRecord
+            {
+                NodeId = node.Id,
+                TimestampUtc = msg.TimestampUtc,
+                DiskName = disk.DiskName,
+                DiskType = disk.DiskType,
+                TotalGb = disk.TotalGb,
+                UsedGb = disk.UsedGb,
+                FreeGb = disk.FreeGb,
+                UtilizationPercent = disk.UtilizationPercent,
+                Iops = disk.Iops,
+                IopsSimulated = disk.IopsSimulated,
+                LatencyMs = disk.LatencyMs
+            });
+        }
         await db.SaveChangesAsync(ct);
     }
 

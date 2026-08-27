@@ -11,6 +11,7 @@ namespace CNS.StorageCluster.Client;
 public sealed partial class MainWindow : Window
 {
     private readonly ObservableCollection<string> _logs = [];
+    private readonly ObservableCollection<DiskMetrics> _disks = [];
     private IStorageClientService? _client;
 
     public MainWindow()
@@ -22,6 +23,7 @@ public sealed partial class MainWindow : Window
         ServerPortText.Text = NetworkDefaults.WebSocketPort.ToString();
         IntervalText.Text = NetworkDefaults.DefaultReportIntervalSeconds.ToString();
         LogList.ItemsSource = _logs;
+        DiskList.ItemsSource = _disks;
         Closed += async (_, _) => { if (_client is not null) await _client.StopAsync(); };
     }
 
@@ -106,8 +108,19 @@ public sealed partial class MainWindow : Window
 
     private void UpdateMetrics(MetricsMessage m)
     {
-        DiskNameText.Text = m.DiskName;
-        DiskTypeText.Text = m.DiskType;
+        _disks.Clear();
+        foreach (var disk in m.Disks) _disks.Add(disk);
+
+        DiskCountText.Text = m.DiskCount.ToString();
+        DiskNameText.Text = m.DiskCount switch
+        {
+            0 => "Sin discos detectados",
+            1 => m.Disks[0].DiskName,
+            _ => $"{m.DiskCount} discos"
+        };
+        DiskTypeText.Text = m.DiskCount == 0
+            ? "-"
+            : string.Join(", ", m.Disks.Select(x => x.DiskType).Distinct(StringComparer.OrdinalIgnoreCase));
         TotalText.Text = $"{m.TotalGb:N1} GB";
         UsedText.Text = $"{m.UsedGb:N1} GB";
         FreeText.Text = $"{m.FreeGb:N1} GB";

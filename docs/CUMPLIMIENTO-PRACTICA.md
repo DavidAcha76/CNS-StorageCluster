@@ -14,7 +14,7 @@
 | Histórico de métricas | `MetricRecord` con `TimestampUtc` y `NodeId` |
 | Identificador cliente | código regional de 3 letras |
 | Estado del nodo | `ACTIVO` / `NO_REPORTA` en `StorageNode` + histórico `NodeEvent` |
-| Nombre del primer disco | `DiskMetricsProvider` usa primer `DriveInfo` fijo/listo |
+| Discos detectados | `DiskMetricsProvider` lee todos los `DriveInfo` fijos o removibles listos en cada ciclo |
 | SSD/HDD | Linux `lsblk`; Windows `Get-PhysicalDisk`; fallback `UNKNOWN` |
 | Capacidad total | `TotalGb` |
 | Espacio utilizado | `UsedGb` |
@@ -23,7 +23,7 @@
 | Fecha/hora | `TimestampUtc` por reporte |
 | Envío periódico | `MetricsLoopAsync` |
 | Intervalo parametrizable | 2–3600 segundos |
-| Solo primer disco | selección única en `DiskMetricsProvider` |
+| Varios discos y nuevos volúmenes | cada `METRICS` contiene una colección de discos; un volumen agregado aparece en el siguiente ciclo |
 | Exactamente 9 clientes | máximo 9 códigos válidos y una sesión simultánea por regional |
 | Adición automática | REGISTER crea el nodo en BD y lo asigna `ACTIVO` |
 | Detectar nodos sin reporte | `NodeHealthService` y timeout configurable |

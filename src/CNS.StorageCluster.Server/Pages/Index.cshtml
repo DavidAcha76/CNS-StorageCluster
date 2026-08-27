@@ -31,6 +31,7 @@
     <article class="summary-card"><span>Nodos activos / totales</span><strong>@s.ActiveNodes / @s.TotalNodes</strong></article>
     <article class="summary-card"><span>Latencia ponderada</span><strong>@s.WeightedLatencyMs.ToString("N1") ms</strong></article>
     <article class="summary-card"><span>Availability promedio</span><strong>@s.AvailabilityPercent.ToString("N3")%</strong></article>
+    <article class="summary-card"><span>Discos monitoreados</span><strong>@s.DiskCount</strong></article>
 </section>
 
 <section class="section-head">
@@ -52,6 +53,7 @@
         </div>
         @if (node.TotalGb > 0)
         {
+            <div class="disk-name">@node.DiskCount disco(s) monitoreado(s)</div>
             <div class="disk-name">@node.DiskName · @node.DiskType</div>
             <div class="metric-line"><span>@node.UsedGb.ToString("N1") / @node.TotalGb.ToString("N1") GB</span><b>@node.UtilizationPercent.ToString("N1")%</b></div>
             <div class="progress"><span style="width:@Math.Min(100, node.UtilizationPercent).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)%"></span></div>

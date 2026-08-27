@@ -12,35 +12,59 @@ public sealed class DiskMetricsProvider
 
     public async Task<MetricsMessage> ReadAsync(string nodeCode, string serverHost, CancellationToken ct)
     {
-        var drive = DriveInfo.GetDrives()
-            .Where(d => d.IsReady && d.DriveType == DriveType.Fixed)
-            .OrderBy(d => d.Name)
-            .FirstOrDefault()
-            ?? DriveInfo.GetDrives().First(d => d.IsReady);
+        var drives = DriveInfo.GetDrives()
+            .Where(IsMonitorableDrive)
+            .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var total = BytesToGb(drive.TotalSize);
-        var free = BytesToGb(drive.AvailableFreeSpace);
-        var used = Math.Max(0, total - free);
-        var utilization = total <= 0 ? 0 : used / total * 100;
         _cachedDiskType ??= await DetectDiskTypeAsync(ct);
         var latency = await TryPingAsync(serverHost, ct);
-
-        // La práctica permite simular IOPS si el lenguaje/plataforma no lo soporta de forma portable.
-        var iops = Math.Round(120 + utilization * 4 + _random.NextDouble() * 180, 1);
-
+        var disks = new List<DiskMetrics>(drives.Count);
+        foreach (var drive in drives)
+        {
+            try
+            {
+                var total = BytesToGb(drive.TotalSize);
+                var free = BytesToGb(drive.AvailableFreeSpace);
+                var used = Math.Max(0, total - free);
+                var utilization = total <= 0 ? 0 : used / total * 100;
+                // La práctica permite simular IOPS si la plataforma no lo soporta de forma portable.
+                var iops = Math.Round(120 + utilization * 4 + _random.NextDouble() * 180, 1);
+                disks.Add(new DiskMetrics(
+                    drive.Name,
+                    _cachedDiskType,
+                    Math.Round(total, 2),
+                    Math.Round(used, 2),
+                    Math.Round(free, 2),
+                    Math.Round(utilization, 2),
+                    iops,
+                    true,
+                    latency));
+            }
+            catch (IOException)
+            {
+                // La unidad dejó de estar disponible entre la detección y la lectura.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Se omiten volúmenes sin permisos, sin cancelar el resto del reporte.
+            }
+        }
         return new MetricsMessage(
             MessageTypes.Metrics,
             nodeCode,
             DateTime.UtcNow,
-            drive.Name,
-            _cachedDiskType,
-            Math.Round(total, 2),
-            Math.Round(used, 2),
-            Math.Round(free, 2),
-            Math.Round(utilization, 2),
-            iops,
-            true,
-            latency);
+            disks);
+    }
+
+    private static bool IsMonitorableDrive(DriveInfo drive)
+    {
+        try
+        {
+            return drive.IsReady && drive.DriveType is DriveType.Fixed or DriveType.Removable;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     private static double BytesToGb(long bytes) => bytes / 1024d / 1024d / 1024d;
