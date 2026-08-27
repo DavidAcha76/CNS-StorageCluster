@@ -81,24 +81,28 @@ public sealed class TcpServerService(
 
             registeredCode = region.Code;
 
-            if (!_sessions.ContainsKey(registeredCode) && _sessions.Count >= RegionCatalog.All.Count)
+            if (_sessions.ContainsKey(registeredCode))
+            {
+                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(
+                    MessageTypes.Error,
+                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")));
+                logger.LogWarning("Conexión TCP rechazada para {Code}: ya existe una sesión activa", registeredCode);
+                return;
+            }
+
+            if (_sessions.Count >= RegionCatalog.All.Count)
             {
                 await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "El cluster ya tiene 9 clientes conectados.")));
                 return;
             }
 
-            // Si el mismo nodo se reconecta después de un corte de red, la conexión nueva reemplaza
-            // cualquier socket anterior que haya quedado medio abierto. Sigue existiendo una sola sesión por regional.
-            if (_sessions.TryRemove(registeredCode, out var previousSession))
-            {
-                previousSession.Close();
-                logger.LogInformation("Sesión anterior de {Code} reemplazada por una reconexión nueva", registeredCode);
-            }
-
             var session = new ClientSession(registeredCode, client, writer);
             if (!_sessions.TryAdd(registeredCode, session))
             {
-                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, $"No se pudo registrar la sesión de {registeredCode}. Reintente.")));
+                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(
+                    MessageTypes.Error,
+                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")));
+                logger.LogWarning("Conexión TCP rechazada para {Code}: otra conexión ganó el registro", registeredCode);
                 return;
             }
             ownedSession = session;
@@ -155,22 +159,28 @@ public sealed class TcpServerService(
             }
 
             registeredCode = region.Code;
-            if (!_sessions.ContainsKey(registeredCode) && _sessions.Count >= RegionCatalog.All.Count)
+            if (_sessions.ContainsKey(registeredCode))
+            {
+                await SendWebSocketMessageAsync(socket, ProtocolJson.Serialize(new ErrorMessage(
+                    MessageTypes.Error,
+                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")), serverToken);
+                logger.LogWarning("Conexión WebSocket rechazada para {Code}: ya existe una sesión activa", registeredCode);
+                return;
+            }
+
+            if (_sessions.Count >= RegionCatalog.All.Count)
             {
                 await SendWebSocketMessageAsync(socket, ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "El cluster ya tiene 9 clientes conectados.")), serverToken);
                 return;
             }
 
-            if (_sessions.TryRemove(registeredCode, out var previousSession))
-            {
-                previousSession.Close();
-                logger.LogInformation("Sesion anterior de {Code} reemplazada por una reconexion WebSocket", registeredCode);
-            }
-
             var session = new ClientSession(registeredCode, socket);
             if (!_sessions.TryAdd(registeredCode, session))
             {
-                await SendWebSocketMessageAsync(socket, ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, $"No se pudo registrar la sesion de {registeredCode}. Reintente.")), serverToken);
+                await SendWebSocketMessageAsync(socket, ProtocolJson.Serialize(new ErrorMessage(
+                    MessageTypes.Error,
+                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")), serverToken);
+                logger.LogWarning("Conexión WebSocket rechazada para {Code}: otra conexión ganó el registro", registeredCode);
                 return;
             }
             ownedSession = session;
