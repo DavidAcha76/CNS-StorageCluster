@@ -22,7 +22,7 @@
         <h1>@n.Name</h1>
         <p>@(n.MachineName ?? "Cliente aún no registrado") · @(n.OperatingSystem ?? "-")</p>
     </div>
-    <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "NO REPORTA")</span>
+    <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
 </section>
 
 <section class="summary-grid">

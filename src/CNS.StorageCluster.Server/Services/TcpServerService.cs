@@ -128,11 +128,16 @@ public sealed class TcpServerService(
         finally
         {
             if (registeredCode is not null && ownedSession is not null &&
-                _sessions.TryGetValue(registeredCode, out var current) && ReferenceEquals(current, ownedSession) &&
-                _sessions.TryRemove(registeredCode, out var removed))
+                _sessions.TryGetValue(registeredCode, out var current) && ReferenceEquals(current, ownedSession))
             {
-                removed.Close();
-                logger.LogInformation("Nodo {Code} desconectado. Se marcará NO_REPORTA al superar el timeout.", registeredCode);
+                // Se actualiza el estado antes de liberar el código para que una sesión nueva
+                // no pueda sobrescribir por carrera el cierre de la sesión anterior.
+                await MarkNodeDisconnectedAsync(registeredCode, "La sesión TCP se desconectó.");
+                if (_sessions.TryRemove(registeredCode, out var removed))
+                {
+                    removed.Close();
+                    logger.LogInformation("Nodo {Code} desconectado y marcado NO_REPORTA.", registeredCode);
+                }
             }
             try { client.Close(); } catch { }
         }
@@ -206,16 +211,45 @@ public sealed class TcpServerService(
         finally
         {
             if (registeredCode is not null && ownedSession is not null &&
-                _sessions.TryGetValue(registeredCode, out var current) && ReferenceEquals(current, ownedSession) &&
-                _sessions.TryRemove(registeredCode, out var removed))
+                _sessions.TryGetValue(registeredCode, out var current) && ReferenceEquals(current, ownedSession))
             {
-                removed.Close();
-                logger.LogInformation("Nodo {Code} desconectado. Se marcara NO_REPORTA al superar el timeout.", registeredCode);
+                // Se actualiza el estado antes de liberar el código para que una sesión nueva
+                // no pueda sobrescribir por carrera el cierre de la sesión anterior.
+                await MarkNodeDisconnectedAsync(registeredCode, "La sesión WebSocket se desconectó.");
+                if (_sessions.TryRemove(registeredCode, out var removed))
+                {
+                    removed.Close();
+                    logger.LogInformation("Nodo {Code} desconectado y marcado NO_REPORTA.", registeredCode);
+                }
             }
             else
             {
                 try { socket.Abort(); } catch { }
             }
+        }
+    }
+
+    private async Task MarkNodeDisconnectedAsync(string nodeCode, string detail)
+    {
+        try
+        {
+            await using var db = await dbFactory.CreateDbContextAsync(CancellationToken.None);
+            var node = await db.Nodes.SingleOrDefaultAsync(x => x.Code == nodeCode);
+            if (node is null || node.Status == NodeStates.NoReporta) return;
+
+            node.Status = NodeStates.NoReporta;
+            db.NodeEvents.Add(new NodeEvent
+            {
+                NodeId = node.Id,
+                EventType = NodeStates.NoReporta,
+                TimestampUtc = DateTime.UtcNow,
+                Detail = detail
+            });
+            await db.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "No se pudo marcar NO_REPORTA al nodo {Code} tras desconectarse", nodeCode);
         }
     }
 
