@@ -25,6 +25,8 @@
     <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
 </section>
 
+@if (online)
+{
 <section class="summary-grid">
     <article class="summary-card"><span>Total Capacity</span><strong>@n.TotalGb.ToString("N1") GB</strong></article>
     <article class="summary-card"><span>Used Capacity</span><strong>@n.UsedGb.ToString("N1") GB</strong></article>
@@ -34,9 +36,17 @@
     <article class="summary-card"><span>Latencia actual</span><strong>@n.LatestLatencyMs.ToString("N1") ms</strong></article>
     <article class="summary-card"><span>Discos monitoreados</span><strong>@n.DiskCount</strong></article>
 </section>
+}
+else
+{
+<section class="panel">
+    <strong>Equipo desconectado.</strong> No se muestran métricas vigentes; los datos previos solo permanecen en el historial.
+    <br />Último reporte: @(n.LastSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "nunca")
+</section>
+}
 
 <section class="panel">
-    <div class="panel-title"><h2>Discos del ultimo reporte</h2><span>@n.DiskCount detectado(s)</span></div>
+    <div class="panel-title"><h2>Discos del reporte vigente</h2><span>@n.DiskCount detectado(s)</span></div>
     <div class="table-wrap">
         <table>
             <thead><tr><th>Disco</th><th>Tipo</th><th>Total</th><th>Usado</th><th>Libre</th><th>Uso</th><th>IOPS</th><th>Latencia</th></tr></thead>
@@ -54,7 +64,7 @@
                     <td>@disk.LatencyMs.ToString("N1") ms</td>
                 </tr>
             }
-            @if (n.CurrentDisks.Count == 0) { <tr><td colspan="8">Sin discos reportados todavia.</td></tr> }
+            @if (n.CurrentDisks.Count == 0) { <tr><td colspan="8">@(online ? "Sin discos reportados todavía." : "El equipo está desconectado; no hay métricas vigentes.")</td></tr> }
             </tbody>
         </table>
     </div>

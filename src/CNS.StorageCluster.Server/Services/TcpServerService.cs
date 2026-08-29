@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -15,7 +16,8 @@ namespace CNS.StorageCluster.Server.Services;
 public sealed class TcpServerService(
     IDbContextFactory<AppDbContext> dbFactory,
     IOptions<TcpServerOptions> options,
-    ILogger<TcpServerService> logger) : BackgroundService
+    ILogger<TcpServerService> logger,
+    ServerReportFileLogger reportFileLogger) : BackgroundService
 {
     private readonly TcpServerOptions _options = options.Value;
     private readonly ConcurrentDictionary<string, ClientSession> _sessions = new(StringComparer.OrdinalIgnoreCase);
@@ -108,7 +110,7 @@ public sealed class TcpServerService(
             ownedSession = session;
 
             await RegisterNodeAsync(registration, region, serverToken);
-            logger.LogInformation("Nodo {Code} ({Region}) conectado", region.Code, region.Name);
+            await LogRegistrationAsync(registration, region, "TCP", serverToken);
 
             while (!serverToken.IsCancellationRequested && client.Connected)
             {
@@ -191,7 +193,7 @@ public sealed class TcpServerService(
             ownedSession = session;
 
             await RegisterNodeAsync(registration, region, serverToken);
-            logger.LogInformation("Nodo {Code} ({Region}) conectado por WebSocket", region.Code, region.Name);
+            await LogRegistrationAsync(registration, region, "WebSocket", serverToken);
 
             while (!serverToken.IsCancellationRequested)
             {
@@ -322,7 +324,11 @@ public sealed class TcpServerService(
         {
             case MessageTypes.Metrics:
                 var metrics = JsonSerializer.Deserialize<MetricsMessage>(json, ProtocolJson.Options);
-                if (metrics is not null) await PersistMetricsAsync(nodeCode, metrics, ct);
+                if (metrics is not null)
+                {
+                    MarkSessionMetricsReceived(nodeCode);
+                    await PersistMetricsAsync(nodeCode, metrics, ct);
+                }
                 break;
 
             case MessageTypes.Ack:
@@ -375,7 +381,49 @@ public sealed class TcpServerService(
             });
         }
         await db.SaveChangesAsync(ct);
+
+        var report = string.Format(
+            CultureInfo.InvariantCulture,
+            "Reporte de equipo | Nodo: {0} ({1}) | Equipo: {2} | Estado: {3} | Recibido UTC: {4:O} | Reportado UTC: {5:O} | Discos: {6} | Capacidad: {7:0.##}/{8:0.##} GB ({9:0.##} %) | Libre: {10:0.##} GB | IOPS: {11:0.##} ({12}) | Latencia media: {13:0.##} ms | Detalle: {14}",
+            node.Code,
+            node.RegionName,
+            string.IsNullOrWhiteSpace(node.MachineName) ? "sin identificar" : node.MachineName,
+            node.Status,
+            now,
+            msg.TimestampUtc,
+            msg.DiskCount,
+            msg.UsedGb,
+            msg.TotalGb,
+            msg.UtilizationPercent,
+            msg.FreeGb,
+            msg.Iops,
+            msg.IopsSimulated ? "simulados" : "reales o mixtos",
+            msg.LatencyMs,
+            FormatDiskSummary(msg.Disks));
+        logger.LogInformation("{Report}", report);
+        await reportFileLogger.WriteAsync("INFO", report, ct);
     }
+
+    private async Task LogRegistrationAsync(RegisterMessage registration, RegionDefinition region, string transport, CancellationToken ct)
+    {
+        var report = $"Equipo registrado | Nodo: {region.Code} ({region.Name}) | Equipo: {registration.MachineName} | SO: {registration.OperatingSystem} | Cliente: {registration.ClientVersion} | Intervalo: {Math.Clamp(registration.ReportIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds)}s | Transporte: {transport}";
+        logger.LogInformation("{Report}", report);
+        await reportFileLogger.WriteAsync("INFO", report, ct);
+    }
+
+    private static string FormatDiskSummary(IEnumerable<DiskMetrics> disks) =>
+        string.Join("; ", disks.Select(disk => string.Format(
+            CultureInfo.InvariantCulture,
+            "{0} [{1}]: {2:0.##}/{3:0.##} GB ({4:0.##} %, libre {5:0.##} GB, IOPS {6:0.##} {7}, latencia {8:0.##} ms)",
+            disk.DiskName,
+            disk.DiskType,
+            disk.UsedGb,
+            disk.TotalGb,
+            disk.UtilizationPercent,
+            disk.FreeGb,
+            disk.Iops,
+            disk.IopsSimulated ? "simulados" : "reales",
+            disk.LatencyMs)));
 
     private async Task PersistAckAsync(string nodeCode, AckMessage ack, CancellationToken ct)
     {
@@ -390,7 +438,6 @@ public sealed class TcpServerService(
         if (command.Kind == "CONFIG_INTERVAL" && command.Node is not null && int.TryParse(command.Payload, out var interval))
         {
             command.Node.ReportIntervalSeconds = Math.Clamp(interval, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds);
-            command.Node.LastSeenUtc = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
     }
@@ -401,8 +448,26 @@ public sealed class TcpServerService(
         var node = await db.Nodes.SingleOrDefaultAsync(x => x.Code == nodeCode, ct);
         if (node is null) return;
         node.ReportIntervalSeconds = Math.Clamp(seconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds);
-        node.LastSeenUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+    }
+
+    private void MarkSessionMetricsReceived(string nodeCode)
+    {
+        if (_sessions.TryGetValue(nodeCode, out var session)) session.MarkMetricsReceived();
+    }
+
+    public void CloseUnresponsiveSession(string nodeCode, DateTime lastAllowedMetricsUtc)
+    {
+        if (!_sessions.TryGetValue(nodeCode, out var session) || session.LastMetricsReceivedUtc > lastAllowedMetricsUtc)
+            return;
+
+        var sessions = (ICollection<KeyValuePair<string, ClientSession>>)_sessions;
+        if (!sessions.Remove(new KeyValuePair<string, ClientSession>(nodeCode, session))) return;
+
+        session.Close();
+        var report = $"Sesion cerrada por falta de métricas | Nodo: {nodeCode} | Ultima métrica UTC: {session.LastMetricsReceivedUtc:O}";
+        logger.LogWarning("{Report}", report);
+        _ = reportFileLogger.WriteAsync("WARN", report);
     }
 
     public async Task<(bool Ok, string Detail)> SendCommandAsync(string nodeCode, string message, CancellationToken ct = default)

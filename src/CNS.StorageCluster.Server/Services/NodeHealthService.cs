@@ -9,7 +9,9 @@ namespace CNS.StorageCluster.Server.Services;
 public sealed class NodeHealthService(
     IDbContextFactory<AppDbContext> dbFactory,
     IOptions<TcpServerOptions> options,
-    ILogger<NodeHealthService> logger) : BackgroundService
+    ILogger<NodeHealthService> logger,
+    ServerReportFileLogger reportFileLogger,
+    TcpServerService tcp) : BackgroundService
 {
     private readonly TcpServerOptions _options = options.Value;
 
@@ -45,16 +47,15 @@ public sealed class NodeHealthService(
 
         var now = DateTime.UtcNow;
         var changed = false;
+        var expiredSessions = new List<(string NodeCode, DateTime FailureAtUtc)>();
         foreach (var node in nodes)
         {
             // Evita falsos NO_REPORTA cuando el intervalo de métricas se aumenta desde cliente/servidor.
             // Se toleran tres intervalos de reporte y, como mínimo, el timeout base del servidor.
-            var timeoutSeconds = Math.Max(
-                Math.Max(5, _options.NodeTimeoutSeconds),
-                Math.Clamp(node.ReportIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds) * 3);
+            var timeoutSeconds = NodeObservationPolicy.GetTimeoutSeconds(node, _options);
 
             var failureAt = node.LastSeenUtc!.Value.AddSeconds(timeoutSeconds);
-            if (now <= failureAt) continue;
+            if (NodeObservationPolicy.IsReporting(node, _options, now)) continue;
 
             node.Status = NodeStates.NoReporta;
             db.NodeEvents.Add(new NodeEvent
@@ -64,9 +65,15 @@ public sealed class NodeHealthService(
                 TimestampUtc = failureAt,
                 Detail = $"No se recibieron reportes durante {timeoutSeconds} segundos."
             });
+            var report = $"Equipo sin reportes | Nodo: {node.Code} ({node.RegionName}) | Equipo: {node.MachineName ?? "sin identificar"} | Ultimo reporte UTC: {node.LastSeenUtc:O} | Tiempo de espera: {timeoutSeconds}s | Estado: {NodeStates.NoReporta}";
+            logger.LogWarning("{Report}", report);
+            await reportFileLogger.WriteAsync("WARN", report, ct);
+            expiredSessions.Add((node.Code, failureAt));
             changed = true;
         }
 
         if (changed) await db.SaveChangesAsync(ct);
+        foreach (var expired in expiredSessions)
+            tcp.CloseUnresponsiveSession(expired.NodeCode, expired.FailureAtUtc);
     }
 }

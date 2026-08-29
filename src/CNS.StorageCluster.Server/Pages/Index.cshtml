@@ -63,7 +63,14 @@
                 <span class="status @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
             </div>
         </div>
-        @if (node.TotalGb > 0)
+        @if (!online)
+        {
+            <div class="empty-node">
+                Equipo desconectado. Las métricas anteriores no se consideran vigentes.
+                <br />Último reporte: @(node.LastSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "nunca")
+            </div>
+        }
+        else if (node.TotalGb > 0)
         {
             <div class="disk-name">@node.DiskCount disco(s) monitoreado(s)</div>
             <div class="disk-name">@node.DiskName · @node.DiskType</div>
@@ -80,7 +87,7 @@
         }
         else
         {
-            <div class="empty-node">Esperando el primer reporte del cliente.</div>
+            <div class="empty-node">Esperando el primer reporte de métricas del cliente.</div>
         }
     </a>
 }

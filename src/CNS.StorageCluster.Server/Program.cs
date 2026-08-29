@@ -11,6 +11,7 @@ builder.Services.AddDbContextFactory<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.Configure<TcpServerOptions>(builder.Configuration.GetSection("TcpServer"));
+builder.Services.AddSingleton<ServerReportFileLogger>();
 builder.Services.AddSingleton<TcpServerService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<TcpServerService>());
 builder.Services.AddHostedService<NodeHealthService>();

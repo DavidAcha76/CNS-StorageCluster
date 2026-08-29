@@ -2,42 +2,50 @@ using CNS.StorageCluster.Server.Data;
 using CNS.StorageCluster.Server.Models;
 using CNS.StorageCluster.Shared;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace CNS.StorageCluster.Server.Services;
 
-public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactory)
+public sealed class ClusterQueryService(
+    IDbContextFactory<AppDbContext> dbFactory,
+    IOptions<TcpServerOptions> options)
 {
+    private readonly TcpServerOptions _options = options.Value;
+
     public async Task<DashboardSnapshot> GetDashboardAsync(CancellationToken ct = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var nodes = await db.Nodes.AsNoTracking().ToListAsync(ct);
         var latest = await GetLatestMetricsAsync(db, ct);
+        var now = DateTime.UtcNow;
 
         var cards = new List<NodeCard>(RegionCatalog.All.Count);
         foreach (var region in RegionCatalog.All)
         {
             var node = nodes.FirstOrDefault(x => x.Code == region.Code);
             latest.TryGetValue(region.Code, out var report);
+            var status = NodeObservationPolicy.GetEffectiveStatus(node, _options, now);
+            var currentReport = status == NodeStates.Online ? report : null;
             var availability = node is null
                 ? 0
-                : await GetAvailabilityPercentAsync(db, node, ct);
+                : await GetAvailabilityPercentAsync(db, node, now, ct);
 
             cards.Add(new NodeCard(
                 region.Code,
                 region.Name,
-                node?.Status ?? NodeStates.NoReporta,
+                status,
                 node?.OperatingSystem,
                 node?.LastSeenUtc,
-                report?.DiskCount ?? 0,
-                report?.DiskSummary ?? "-",
-                report?.DiskTypeSummary ?? "-",
-                report?.TotalGb ?? 0,
-                report?.UsedGb ?? 0,
-                report?.FreeGb ?? 0,
-                report?.UtilizationPercent ?? 0,
-                report?.Iops ?? 0,
-                report?.IopsSimulated ?? true,
-                report?.LatencyMs ?? 0,
+                currentReport?.DiskCount ?? 0,
+                currentReport?.DiskSummary ?? "-",
+                currentReport?.DiskTypeSummary ?? "-",
+                currentReport?.TotalGb ?? 0,
+                currentReport?.UsedGb ?? 0,
+                currentReport?.FreeGb ?? 0,
+                currentReport?.UtilizationPercent ?? 0,
+                currentReport?.Iops ?? 0,
+                currentReport?.IopsSimulated ?? true,
+                currentReport?.LatencyMs ?? 0,
                 node?.ReportIntervalSeconds ?? NetworkDefaults.DefaultReportIntervalSeconds,
                 availability));
         }
@@ -107,6 +115,8 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
                 Commands: []);
         }
 
+        var now = DateTime.UtcNow;
+
         // One database row is stored for each disk in a report cycle.
         var metricRows = await db.Metrics.AsNoTracking()
             .Where(x => x.NodeId == node.Id)
@@ -131,37 +141,39 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
             .ToListAsync(ct);
 
         var latest = history.LastOrDefault();
+        var status = NodeObservationPolicy.GetEffectiveStatus(node, _options, now);
+        var current = status == NodeStates.Online ? latest : null;
         var growthPerDay = CalculateGrowthPerDay(history);
-        var availability = CalculateAvailability(node, events);
+        var availability = CalculateAvailability(node, events, now);
         var failovers = events.Count(x => x.EventType == NodeStates.NoReporta);
 
         return new NodeDetail(
             Code: node.Code,
             Name: node.RegionName,
-            Status: node.Status,
+            Status: status,
             MachineName: node.MachineName,
             OperatingSystem: node.OperatingSystem,
             FirstSeenUtc: node.FirstSeenUtc,
             LastSeenUtc: node.LastSeenUtc,
             ReportIntervalSeconds: node.ReportIntervalSeconds,
-            Latest: latest,
+            Latest: current,
             GrowthGbPerDay: growthPerDay,
             GrowthGbPerMonth: growthPerDay * 30,
             AvailabilityPercent: availability.Percentage,
             UptimeSeconds: availability.OnlineSeconds,
             FailoverEvents: failovers,
             AverageLatencyMs: history.Count == 0 ? 0 : history.Average(x => x.LatencyMs),
-            DiskCount: latest?.DiskCount ?? 0,
-            TotalGb: latest?.TotalGb ?? 0,
-            UsedGb: latest?.UsedGb ?? 0,
-            FreeGb: latest?.FreeGb ?? 0,
-            UtilizationPercent: latest?.UtilizationPercent ?? 0,
-            DiskName: latest?.DiskSummary ?? "-",
-            DiskType: latest?.DiskTypeSummary ?? "-",
-            Iops: latest?.Iops ?? 0,
-            IopsSimulated: latest?.IopsSimulated ?? true,
-            LatestLatencyMs: latest?.LatencyMs ?? 0,
-            CurrentDisks: latest?.Disks ?? [],
+            DiskCount: current?.DiskCount ?? 0,
+            TotalGb: current?.TotalGb ?? 0,
+            UsedGb: current?.UsedGb ?? 0,
+            FreeGb: current?.FreeGb ?? 0,
+            UtilizationPercent: current?.UtilizationPercent ?? 0,
+            DiskName: current?.DiskSummary ?? "-",
+            DiskType: current?.DiskTypeSummary ?? "-",
+            Iops: current?.Iops ?? 0,
+            IopsSimulated: current?.IopsSimulated ?? true,
+            LatestLatencyMs: current?.LatencyMs ?? 0,
+            CurrentDisks: current?.Disks ?? [],
             History: history,
             Events: events,
             Commands: commands);
@@ -215,11 +227,11 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
         return (last.UsedGb - first.UsedGb) / days;
     }
 
-    private static AvailabilityStats CalculateAvailability(StorageNode node, IReadOnlyList<NodeEvent> events)
+    private AvailabilityStats CalculateAvailability(StorageNode node, IReadOnlyList<NodeEvent> events, DateTime nowUtc)
     {
         if (node.FirstSeenUtc is null) return new AvailabilityStats(0, 0);
         var start = node.FirstSeenUtc.Value;
-        var end = DateTime.UtcNow;
+        var end = nowUtc;
         var totalSeconds = Math.Max(1, (end - start).TotalSeconds);
         double onlineSeconds = 0;
         DateTime? onlineStart = null;
@@ -238,19 +250,26 @@ public sealed class ClusterQueryService(IDbContextFactory<AppDbContext> dbFactor
         }
 
         if (onlineStart is not null)
-            onlineSeconds += Math.Max(0, (end - onlineStart.Value).TotalSeconds);
+        {
+            var effectiveEnd = end;
+            if (node.LastSeenUtc is not null)
+                effectiveEnd = DateTime.Compare(node.LastSeenUtc.Value.AddSeconds(NodeObservationPolicy.GetTimeoutSeconds(node, _options)), end) < 0
+                    ? node.LastSeenUtc.Value.AddSeconds(NodeObservationPolicy.GetTimeoutSeconds(node, _options))
+                    : end;
+            onlineSeconds += Math.Max(0, (effectiveEnd - onlineStart.Value).TotalSeconds);
+        }
 
         var percentage = Math.Clamp(onlineSeconds / totalSeconds * 100, 0, 100);
         return new AvailabilityStats(percentage, onlineSeconds);
     }
 
-    private static async Task<double> GetAvailabilityPercentAsync(AppDbContext db, StorageNode node, CancellationToken ct)
+    private async Task<double> GetAvailabilityPercentAsync(AppDbContext db, StorageNode node, DateTime nowUtc, CancellationToken ct)
     {
         var events = await db.NodeEvents.AsNoTracking()
             .Where(x => x.NodeId == node.Id)
             .OrderBy(x => x.TimestampUtc)
             .ToListAsync(ct);
-        return CalculateAvailability(node, events).Percentage;
+        return CalculateAvailability(node, events, nowUtc).Percentage;
     }
 }
 

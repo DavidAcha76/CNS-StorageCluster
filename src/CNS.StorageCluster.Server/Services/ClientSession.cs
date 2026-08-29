@@ -10,9 +10,11 @@ public sealed class ClientSession
     private readonly TcpClient? _client;
     private readonly StreamWriter? _writer;
     private readonly WebSocket? _webSocket;
+    private long _lastMetricsReceivedTicks = DateTime.UtcNow.Ticks;
 
     public string NodeCode { get; }
     public DateTime ConnectedAtUtc { get; } = DateTime.UtcNow;
+    public DateTime LastMetricsReceivedUtc => new(Interlocked.Read(ref _lastMetricsReceivedTicks), DateTimeKind.Utc);
 
     public ClientSession(string nodeCode, TcpClient client, StreamWriter writer)
     {
@@ -47,6 +49,9 @@ public sealed class ClientSession
             _writeLock.Release();
         }
     }
+
+    public void MarkMetricsReceived() =>
+        Interlocked.Exchange(ref _lastMetricsReceivedTicks, DateTime.UtcNow.Ticks);
 
     public void Close()
     {
