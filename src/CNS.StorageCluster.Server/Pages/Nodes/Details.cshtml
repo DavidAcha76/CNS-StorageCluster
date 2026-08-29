@@ -22,7 +22,77 @@
         <h1>@n.Name</h1>
         <p>@(n.MachineName ?? "Cliente aún no registrado") · @(n.OperatingSystem ?? "-")</p>
     </div>
-    <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
+    <div class="node-header-actions">
+        <button id="printCertificate" class="secondary" type="button">Imprimir certificado PDF</button>
+        <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
+    </div>
+</section>
+
+<section id="diskCertificate" class="disk-certificate" aria-labelledby="certificateTitle">
+    <header class="certificate-header">
+        <div>
+            <div class="eyebrow">CNS STORAGE CLUSTER</div>
+            <h2 id="certificateTitle">Certificado de estado de discos</h2>
+            <p>Constancia generada con la informaci&oacute;n m&aacute;s reciente reportada por el nodo.</p>
+        </div>
+        <div class="certificate-status @(online ? "online" : "offline")">
+            <span>ESTADO ACTUAL</span>
+            <strong>@(online ? "ACTIVO" : "NO VIGENTE")</strong>
+        </div>
+    </header>
+
+    <div class="certificate-meta">
+        <div><span>Nodo</span><strong>@n.Name (@n.Code)</strong></div>
+        <div><span>Equipo</span><strong>@(n.MachineName ?? "No registrado")</strong></div>
+        <div><span>Sistema operativo</span><strong>@(n.OperatingSystem ?? "No registrado")</strong></div>
+        <div><span>&Uacute;ltimo reporte</span><strong>@(n.LastSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "Sin reporte")</strong></div>
+        <div><span>Fecha y hora de emisi&oacute;n</span><strong id="certificateIssuedAt">-</strong></div>
+    </div>
+
+    @if (online && n.CurrentDisks.Count > 0)
+    {
+        <div class="certificate-note success">La informaci&oacute;n de este certificado corresponde al reporte vigente del nodo.</div>
+    }
+    else if (!online)
+    {
+        <div class="certificate-note warning">El cliente est&aacute; desconectado. Los datos mostrados corresponden a su &uacute;ltimo reporte y no se consideran vigentes.</div>
+    }
+    else
+    {
+        <div class="certificate-note warning">El nodo est&aacute; activo, pero a&uacute;n no report&oacute; informaci&oacute;n de discos.</div>
+    }
+
+    <div class="table-wrap certificate-table-wrap">
+        <table class="certificate-table">
+            <thead><tr><th>Disco</th><th>Tipo</th><th>Estado</th><th>Total</th><th>Usado</th><th>Libre</th><th>Uso</th><th>IOPS</th><th>Latencia</th></tr></thead>
+            <tbody>
+            @foreach (var disk in n.CurrentDisks)
+            {
+                var diskState = !online ? "NO VIGENTE" : disk.UtilizationPercent >= 85 ? "ATENCIÓN" : "OPERATIVO";
+                var diskStateClass = !online ? "offline" : disk.UtilizationPercent >= 85 ? "attention" : "online";
+                <tr>
+                    <td>@disk.DiskName</td>
+                    <td>@disk.DiskType</td>
+                    <td><span class="certificate-disk-status @diskStateClass">@diskState</span></td>
+                    <td>@disk.TotalGb.ToString("N1") GB</td>
+                    <td>@disk.UsedGb.ToString("N1") GB</td>
+                    <td>@disk.FreeGb.ToString("N1") GB</td>
+                    <td>@disk.UtilizationPercent.ToString("N1")%</td>
+                    <td>@disk.Iops.ToString("N0")@(disk.IopsSimulated ? "*" : "")</td>
+                    <td>@disk.LatencyMs.ToString("N1") ms</td>
+                </tr>
+            }
+            @if (n.CurrentDisks.Count == 0)
+            {
+                <tr><td colspan="9">No hay discos disponibles para certificar.</td></tr>
+            }
+            </tbody>
+        </table>
+    </div>
+    <footer class="certificate-footer">
+        <span>Capacidad total: <strong>@n.TotalGb.ToString("N1") GB</strong> &middot; Usada: <strong>@n.UsedGb.ToString("N1") GB</strong> &middot; Libre: <strong>@n.FreeGb.ToString("N1") GB</strong></span>
+        <span>* IOPS estimado cuando el cliente no puede medirlo directamente.</span>
+    </footer>
 </section>
 
 @if (online)
@@ -224,5 +294,17 @@ draw(); window.addEventListener('resize', draw);
 document.querySelectorAll('[data-msg]').forEach(b => b.addEventListener('click', () => {
     document.querySelector('textarea[name=message]').value = b.dataset.msg;
 }));
+
+const certificateIssuedAt = document.getElementById('certificateIssuedAt');
+function updateCertificateIssuedAt() {
+    certificateIssuedAt.textContent = new Intl.DateTimeFormat('es-BO', {
+        dateStyle: 'short', timeStyle: 'medium'
+    }).format(new Date());
+}
+updateCertificateIssuedAt();
+document.getElementById('printCertificate').addEventListener('click', () => {
+    updateCertificateIssuedAt();
+    window.print();
+});
 </script>
 }
