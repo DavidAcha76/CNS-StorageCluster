@@ -10,6 +10,7 @@ public sealed class DiskMetricsProvider
     private readonly Random _random = new();
     private string? _cachedDiskType;
 
+    //Calcula métricas de disco y latencia de red para un nodo específico.
     public async Task<MetricsMessage> ReadAsync(string nodeCode, string serverHost, CancellationToken ct)
     {
         var drives = DriveInfo.GetDrives()

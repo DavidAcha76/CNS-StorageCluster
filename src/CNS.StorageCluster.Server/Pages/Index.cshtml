@@ -48,17 +48,35 @@
     var level = !online ? "offline" : node.UtilizationPercent >= 85 ? "danger" : node.UtilizationPercent >= 70 ? "warning" : "ok";
     <a class="node-card @level" asp-page="/Nodes/Details" asp-route-code="@node.Code">
         <div class="node-top">
-            <div><span class="node-code">@node.Code</span><h3>@node.Name</h3></div>
-            <span class="status @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
+            <div>
+                <span class="node-code">@node.Code</span>
+                <h3>@node.Name</h3>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+                @{
+                    var os = node.OperatingSystem ?? string.Empty;
+                    var osIcon = os.Contains("Windows", StringComparison.OrdinalIgnoreCase) ? "🪟"
+                        : os.Contains("Linux", StringComparison.OrdinalIgnoreCase) || os.Contains("Unix", StringComparison.OrdinalIgnoreCase) ? "🐧"
+                        : "❓";
+                }
+                <div title="@os"> <span style="font-size:18px">@osIcon</span></div>
+                <span class="status @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
+            </div>
         </div>
         @if (node.TotalGb > 0)
         {
             <div class="disk-name">@node.DiskCount disco(s) monitoreado(s)</div>
             <div class="disk-name">@node.DiskName · @node.DiskType</div>
-            <div class="metric-line"><span>@node.UsedGb.ToString("N1") / @node.TotalGb.ToString("N1") GB</span><b>@node.UtilizationPercent.ToString("N1")%</b></div>
-            <div class="progress"><span style="width:@Math.Min(100, node.UtilizationPercent).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)%"></span></div>
-            <div class="node-foot"><span>@node.FreeGb.ToString("N1") GB libres</span><span>@node.Iops.ToString("N0") IOPS · @node.LatencyMs.ToString("N1") ms</span></div>
-            <div class="node-foot"><span>Availability @node.AvailabilityPercent.ToString("N3")%</span><span>cada @node.ReportIntervalSeconds s</span></div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+                <div style="width:60px;height:60px;flex:0 0 60px">
+                    <canvas id="chart-@node.Code" width="60" height="60"></canvas>
+                </div>
+                <div style="flex:1">
+                    <div class="metric-line"><span>@node.UsedGb.ToString("N1") / @node.TotalGb.ToString("N1") GB</span><b>@node.UtilizationPercent.ToString("N1")%</b></div>
+                    <div class="node-foot"><span>@node.FreeGb.ToString("N1") GB libres</span><span>@node.Iops.ToString("N0") IOPS · @node.LatencyMs.ToString("N1") ms</span></div>
+                    <div class="node-foot"><span>Availability @node.AvailabilityPercent.ToString("N3")%</span><span>cada @node.ReportIntervalSeconds s</span></div>
+                </div>
+            </div>
         }
         else
         {
@@ -88,6 +106,39 @@
     }
     select.addEventListener('change', schedule);
     schedule();
+
+    // Inicializar gráficos doughnut para cada nodo
+    try {
+        const nodes = @System.Text.Json.JsonSerializer.Serialize(Model.Snapshot.Nodes.Select(n => new { code = n.Code, used = n.UsedGb, free = n.FreeGb, util = n.UtilizationPercent }));
+        const parsed = JSON.parse(nodes);
+        function colorFor(util) {
+            if (util >= 85) return '#f04438';
+            if (util >= 70) return '#f79009';
+            return '#12b76a';
+        }
+        parsed.forEach(n => {
+            try {
+                const el = document.getElementById('chart-' + n.code);
+                if (!el) return;
+                const used = Math.max(0, Number(n.used) || 0);
+                const free = Math.max(0, Number(n.free) || 0);
+                const util = Number(n.util) || (used + free) === 0 ? 0 : used / (used + free) * 100;
+                const bg = colorFor(util);
+                new Chart(el.getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Usado','Libre'],
+                        datasets: [{ data: [used, free], backgroundColor: [bg, '#e6eef8'], hoverOffset: 2, borderWidth: 0 }]
+                    },
+                    options: {
+                        cutout: '70%',
+                        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                        elements: { arc: { borderWidth: 0 } }
+                    }
+                });
+            } catch { }
+        });
+    } catch { }
 })();
 </script>
 }
