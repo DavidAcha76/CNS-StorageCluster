@@ -23,6 +23,7 @@
         <p>@(n.MachineName ?? "Cliente aún no registrado") · @(n.OperatingSystem ?? "-")</p>
     </div>
     <div class="node-header-actions">
+        <a asp-page-handler="ExportTxt" asp-route-code="@n.Code" class="button secondary" style="display:inline-flex;align-items:center;gap:6px">📄 Descargar .TXT</a>
         <button id="printCertificate" class="secondary" type="button">Imprimir certificado PDF</button>
         <span class="status big @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
     </div>
