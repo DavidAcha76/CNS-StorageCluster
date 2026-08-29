@@ -9,6 +9,8 @@ public sealed class StorageNode
     public string? MachineName { get; set; }
     public string? OperatingSystem { get; set; }
     public string? ClientVersion { get; set; }
+    public string? MacAddress { get; set; }
+    public string? IpAddress { get; set; }
     public DateTime? FirstSeenUtc { get; set; }
     public DateTime? LastSeenUtc { get; set; }
     public int ReportIntervalSeconds { get; set; } = 10;

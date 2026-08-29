@@ -14,6 +14,7 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
     private CancellationTokenSource? _cts;
     private Task? _runTask;
     private StreamWriter? _writer;
+    private TransportCipher? _transportCipher;
     private int _reportIntervalSeconds = Math.Clamp(initialIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds);
     private volatile bool _connected;
 
@@ -25,6 +26,7 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
     public Task StartAsync()
     {
         if (_runTask is not null && !_runTask.IsCompleted) return Task.CompletedTask;
+        _transportCipher ??= TransportCipher.FromEnvironment();
         _cts = new CancellationTokenSource();
         _runTask = RunReconnectLoopAsync(_cts.Token);
         return Task.CompletedTask;
@@ -89,16 +91,21 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
         using var writer = new StreamWriter(stream, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
         _writer = writer;
 
+        var (mac, ip) = DiskMetricsProvider.GetNetworkIdentity();
+        var localTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         var registration = new RegisterMessage(
             MessageTypes.Register,
             nodeCode,
             Environment.MachineName,
             RuntimeInformation.OSDescription,
             "1.0.0",
-            Volatile.Read(ref _reportIntervalSeconds));
+            Volatile.Read(ref _reportIntervalSeconds),
+            mac,
+            ip,
+            localTime);
         await SendAsync(registration, ct);
         SetConnected(true);
-        Log?.Invoke("Conectado y registrado automáticamente en el nodo central.");
+        Log?.Invoke($"Conectado y registrado automáticamente (IP: {ip}, MAC: {mac}, Hora: {localTime}).");
 
         using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var receive = ReceiveLoopAsync(reader, connectionCts.Token);
@@ -127,12 +134,13 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
             var line = await reader.ReadLineAsync(ct);
             if (line is null) throw new IOException("El servidor cerró la conexión.");
             if (string.IsNullOrWhiteSpace(line)) continue;
-            var type = ProtocolJson.GetMessageType(line);
+            var json = Cipher.Decrypt(line);
+            var type = ProtocolJson.GetMessageType(json);
 
             switch (type)
             {
                 case MessageTypes.Command:
-                    var command = JsonSerializer.Deserialize<CommandMessage>(line, ProtocolJson.Options);
+                    var command = JsonSerializer.Deserialize<CommandMessage>(json, ProtocolJson.Options);
                     if (command is not null)
                     {
                         var isGenerateReport = string.Equals(command.Message?.Trim(), "GENERATE_REPORT", StringComparison.OrdinalIgnoreCase) ||
@@ -160,7 +168,7 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
                     break;
 
                 case MessageTypes.ConfigInterval:
-                    var config = JsonSerializer.Deserialize<ConfigIntervalMessage>(line, ProtocolJson.Options);
+                    var config = JsonSerializer.Deserialize<ConfigIntervalMessage>(json, ProtocolJson.Options);
                     if (config is not null)
                     {
                         var seconds = Math.Clamp(config.ReportIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds);
@@ -175,7 +183,7 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
                     break;
 
                 case MessageTypes.Error:
-                    var error = JsonSerializer.Deserialize<ErrorMessage>(line, ProtocolJson.Options);
+                    var error = JsonSerializer.Deserialize<ErrorMessage>(json, ProtocolJson.Options);
                     throw new InvalidOperationException(error?.Message ?? "Error reportado por el servidor.");
             }
         }
@@ -187,7 +195,7 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
         await _sendLock.WaitAsync(ct);
         try
         {
-            await writer.WriteLineAsync(ProtocolJson.Serialize(message).AsMemory(), ct);
+            await writer.WriteLineAsync(Cipher.Encrypt(ProtocolJson.Serialize(message)).AsMemory(), ct);
             await writer.FlushAsync(ct);
         }
         finally
@@ -210,6 +218,9 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
         }
         finally { _logLock.Release(); }
     }
+
+    private TransportCipher Cipher => _transportCipher ??
+        throw new InvalidOperationException("El cifrado de transporte no estÃ¡ configurado.");
 
     private void SetConnected(bool value)
     {

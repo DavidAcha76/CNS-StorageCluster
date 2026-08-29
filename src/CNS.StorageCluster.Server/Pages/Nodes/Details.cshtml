@@ -20,7 +20,7 @@
     <div>
         <span class="node-code">@n.Code</span>
         <h1>@n.Name</h1>
-        <p>@(n.MachineName ?? "Cliente aún no registrado") · @(n.OperatingSystem ?? "-")</p>
+        <p>@(n.MachineName ?? "Cliente aún no registrado") · @(n.OperatingSystem ?? "-") · IP: @(n.IpAddress ?? "-") · MAC: @(n.MacAddress ?? "-")</p>
     </div>
     <div class="node-header-actions">
         <form method="post" asp-page-handler="GenerateReportOnClient" style="display:inline">
@@ -49,6 +49,8 @@
     <div class="certificate-meta">
         <div><span>Nodo</span><strong>@n.Name (@n.Code)</strong></div>
         <div><span>Equipo</span><strong>@(n.MachineName ?? "No registrado")</strong></div>
+        <div><span>Dirección IP</span><strong>@(n.IpAddress ?? "No registrada")</strong></div>
+        <div><span>Dirección MAC</span><strong>@(n.MacAddress ?? "No registrada")</strong></div>
         <div><span>Sistema operativo</span><strong>@(n.OperatingSystem ?? "No registrado")</strong></div>
         <div><span>&Uacute;ltimo reporte</span><strong>@(n.LastSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "Sin reporte")</strong></div>
         <div><span>Fecha y hora de emisi&oacute;n</span><strong id="certificateIssuedAt">-</strong></div>
@@ -153,6 +155,8 @@ else
     <article class="panel">
         <h2>Disponibilidad y almacenamiento</h2>
         <dl class="details-list">
+            <div><dt>Dirección IP</dt><dd>@(n.IpAddress ?? "-")</dd></div>
+            <div><dt>Dirección MAC</dt><dd>@(n.MacAddress ?? "-")</dd></div>
             <div><dt>Discos reportados</dt><dd>@n.DiskCount</dd></div>
             <div><dt>Volúmenes</dt><dd>@n.DiskName</dd></div>
             <div><dt>Tipos</dt><dd>@n.DiskType</dd></div>

@@ -38,6 +38,8 @@ public sealed class DetailsModel(ClusterQueryService query, TcpServerService tcp
         sb.AppendLine($"Sucursal / Regional  : {node.Name} ({node.Code})");
         sb.AppendLine($"Estado del Nodo      : {(node.Status == "ACTIVO" ? "ACTIVO (EN LÍNEA)" : "DESCONECTADO (NO REPORTA)")}");
         sb.AppendLine($"Nombre del Equipo    : {node.MachineName ?? "No registrado"}");
+        sb.AppendLine($"Dirección IP         : {node.IpAddress ?? "No registrada"}");
+        sb.AppendLine($"Dirección MAC        : {node.MacAddress ?? "No registrada"}");
         sb.AppendLine($"Sistema Operativo    : {node.OperatingSystem ?? "No registrado"}");
         sb.AppendLine($"Versión de Cliente   : {node.ClientVersion ?? "No disponible"}");
         sb.AppendLine($"Último Reporte       : {(node.LastSeenUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss") ?? "Sin reportes")}");

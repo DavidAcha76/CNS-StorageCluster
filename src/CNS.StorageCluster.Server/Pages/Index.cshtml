@@ -63,6 +63,11 @@
                 <span class="status @(online ? "online" : "offline")">@(online ? "ACTIVO" : "DESCONECTADO")</span>
             </div>
         </div>
+        <div class="node-net-info" style="font-size:11px;color:var(--muted);margin:4px 0 6px;display:flex;flex-wrap:wrap;gap:8px;">
+            <span><b>IP:</b> @(node.IpAddress ?? "-")</span>
+            <span><b>MAC:</b> @(node.MacAddress ?? "-")</span>
+            <span><b>Hora:</b> @(node.LastSeenUtc?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</span>
+        </div>
         @if (!online)
         {
             <div class="empty-node">

@@ -12,6 +12,7 @@ public sealed partial class MainWindow : Window
 {
     private readonly ObservableCollection<string> _logs = [];
     private readonly ObservableCollection<DiskMetrics> _disks = [];
+    private readonly DispatcherTimer _clockTimer;
     private IStorageClientService? _client;
 
     public MainWindow()
@@ -24,7 +25,30 @@ public sealed partial class MainWindow : Window
         IntervalText.Text = NetworkDefaults.DefaultReportIntervalSeconds.ToString();
         LogList.ItemsSource = _logs;
         DiskList.ItemsSource = _disks;
-        Closed += async (_, _) => { if (_client is not null) await _client.StopAsync(); };
+
+        var (mac, ip) = DiskMetricsProvider.GetNetworkIdentity();
+        LocalIpBadge.Text = ip;
+        LocalMacBadge.Text = mac;
+        SideIpText.Text = ip;
+        SideMacText.Text = mac;
+
+        UpdateClock();
+        _clockTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        _clockTimer.Tick += (_, _) => UpdateClock();
+        _clockTimer.Start();
+
+        Closed += async (_, _) =>
+        {
+            _clockTimer.Stop();
+            if (_client is not null) await _client.StopAsync();
+        };
+    }
+
+    private void UpdateClock()
+    {
+        var now = DateTime.Now.ToString("HH:mm:ss");
+        ClockText.Text = now;
+        SideTimeText.Text = now;
     }
 
     private async void Connect_Click(object? sender, RoutedEventArgs e)
@@ -73,7 +97,21 @@ public sealed partial class MainWindow : Window
         SetConnectionVisual("CONECTANDO", "#D97706");
         var transport = port == NetworkDefaults.WebSocketPort ? "WSS" : "TCP";
         AddLog($"Iniciando cliente {region.Name} ({region.Code}) por {transport} contra {host}:{port}...");
-        await _client.StartAsync();
+        try
+        {
+            await _client.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            AddLog($"No se puede iniciar la conexiÃ³n cifrada: {ex.Message}");
+            _client = null;
+            ConnectButton.IsEnabled = true;
+            DisconnectButton.IsEnabled = false;
+            RegionCombo.IsEnabled = true;
+            ServerHostText.IsEnabled = true;
+            ServerPortText.IsEnabled = true;
+            SetConnectionVisual("DESCONECTADO", "#8A98A3");
+        }
     }
 
     private async void Disconnect_Click(object? sender, RoutedEventArgs e)
@@ -129,6 +167,16 @@ public sealed partial class MainWindow : Window
         IopsOnlyText.Text = $"{m.Iops:N0}";
         LatencyText.Text = $"{m.LatencyMs:N1} ms";
         LastReportText.Text = $"Reporte {m.TimestampUtc.ToLocalTime():HH:mm:ss}";
+        if (!string.IsNullOrWhiteSpace(m.IpAddress))
+        {
+            LocalIpBadge.Text = m.IpAddress;
+            SideIpText.Text = m.IpAddress;
+        }
+        if (!string.IsNullOrWhiteSpace(m.MacAddress))
+        {
+            LocalMacBadge.Text = m.MacAddress;
+            SideMacText.Text = m.MacAddress;
+        }
     }
 
     private void AddLog(string text)

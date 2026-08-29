@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using CNS.StorageCluster.Shared;
 
@@ -9,6 +11,57 @@ public sealed class DiskMetricsProvider
 {
     private readonly Random _random = new();
     private string? _cachedDiskType;
+
+    public static (string MacAddress, string IpAddress) GetNetworkIdentity()
+    {
+        var mac = "00:00:00:00:00:00";
+        var ip = "127.0.0.1";
+
+        try
+        {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
+                              nic.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                              nic.NetworkInterfaceType != NetworkInterfaceType.Tunnel)
+                .OrderByDescending(nic => nic.NetworkInterfaceType is NetworkInterfaceType.Ethernet or NetworkInterfaceType.GigabitEthernet)
+                .ThenByDescending(nic => nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
+                .ToList();
+
+            foreach (var nic in interfaces)
+            {
+                var bytes = nic.GetPhysicalAddress().GetAddressBytes();
+                if (bytes.Length == 6 && mac == "00:00:00:00:00:00")
+                {
+                    mac = string.Join(":", bytes.Select(b => b.ToString("X2")));
+                }
+
+                var ipProps = nic.GetIPProperties();
+                var unicast = ipProps.UnicastAddresses
+                    .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                         !IPAddress.IsLoopback(u.Address));
+                if (unicast is not null && ip == "127.0.0.1")
+                {
+                    ip = unicast.Address.ToString();
+                }
+
+                if (mac != "00:00:00:00:00:00" && ip != "127.0.0.1")
+                    break;
+            }
+
+            if (ip == "127.0.0.1")
+            {
+                var host = Dns.GetHostEntry(Dns.GetHostName());
+                var ipv4 = host.AddressList.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a));
+                if (ipv4 is not null) ip = ipv4.ToString();
+            }
+        }
+        catch
+        {
+            // fallback
+        }
+
+        return (mac, ip);
+    }
 
     //Calcula métricas de disco y latencia de red para un nodo específico.
     public async Task<MetricsMessage> ReadAsync(string nodeCode, string serverHost, CancellationToken ct)
@@ -51,11 +104,16 @@ public sealed class DiskMetricsProvider
                 // Se omiten volúmenes sin permisos, sin cancelar el resto del reporte.
             }
         }
+        var (macAddress, ipAddress) = GetNetworkIdentity();
+        var localTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         return new MetricsMessage(
             MessageTypes.Metrics,
             nodeCode,
             DateTime.UtcNow,
-            disks);
+            disks,
+            macAddress,
+            ipAddress,
+            localTime);
     }
 
     public async Task<string> GenerateReportFileAsync(string nodeCode, string serverHost, CancellationToken ct)
