@@ -17,6 +17,7 @@ public sealed class TransportCipher
     private const int NonceSizeBytes = 12;
     private const int TagSizeBytes = 16;
     private const int MaximumPlaintextBytes = 1024 * 1024;
+    private const string LocalKeyFileName = "transport-key.base64";
     private static readonly byte[] AssociatedData = "CNS.StorageCluster.Transport.v1"u8.ToArray();
 
     private readonly byte[] _key;
@@ -37,12 +38,54 @@ public sealed class TransportCipher
         }
         if (string.IsNullOrWhiteSpace(encodedKey))
         {
-            throw new InvalidOperationException(
-                $"Falta la variable de entorno {EncryptionKeyEnvironmentVariable}. " +
-                "El cliente y el servidor requieren la misma clave AES-256-GCM en Base64.");
+            encodedKey = GetOrCreateLocalKey();
         }
 
         return FromBase64Key(encodedKey);
+    }
+
+    private static string GetOrCreateLocalKey()
+    {
+        var localData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localData))
+        {
+            try
+            {
+                return GetOrCreateKeyAt(Path.Combine(localData, "CNS.StorageCluster", "secrets"));
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Algunas ejecuciones restringidas no pueden escribir en el perfil
+                // del usuario. Se usa entonces el directorio de la aplicacion.
+            }
+        }
+
+        return GetOrCreateKeyAt(Path.Combine(AppContext.BaseDirectory, ".cns-storagecluster", "secrets"));
+    }
+
+    private static string GetOrCreateKeyAt(string folder)
+    {
+        var keyPath = Path.Combine(folder, LocalKeyFileName);
+        Directory.CreateDirectory(folder);
+
+        if (File.Exists(keyPath))
+        {
+            return File.ReadAllText(keyPath).Trim();
+        }
+
+        var generatedKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(KeySizeBytes));
+        try
+        {
+            using var stream = new FileStream(keyPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            using var writer = new StreamWriter(stream, new UTF8Encoding(false));
+            writer.Write(generatedKey);
+            return generatedKey;
+        }
+        catch (IOException) when (File.Exists(keyPath))
+        {
+            // Otro proceso inició a la vez y ya creó la clave compartida local.
+            return File.ReadAllText(keyPath).Trim();
+        }
     }
 
     public static TransportCipher FromBase64Key(string encodedKey)
