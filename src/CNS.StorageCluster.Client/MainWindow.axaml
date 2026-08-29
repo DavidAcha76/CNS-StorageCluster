@@ -49,7 +49,7 @@
 
             <StackPanel Spacing="6">
               <TextBlock Text="Servidor central" Classes="fieldLabel"/>
-              <TextBox x:Name="ServerHostText" IsReadOnly="True"/>
+              <TextBox x:Name="ServerHostText"/>
             </StackPanel>
 
             <StackPanel Spacing="6">
