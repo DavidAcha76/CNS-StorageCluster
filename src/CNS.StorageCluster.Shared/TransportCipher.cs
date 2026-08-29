@@ -26,6 +26,15 @@ public sealed class TransportCipher
     public static TransportCipher FromEnvironment()
     {
         var encodedKey = Environment.GetEnvironmentVariable(EncryptionKeyEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(encodedKey) && OperatingSystem.IsWindows())
+        {
+            // Visual Studio y los servicios ya iniciados no actualizan su entorno
+            // cuando se crea una variable de usuario. Leer el valor persistente
+            // permite usar la misma clave sin incorporar secretos al proyecto.
+            encodedKey = Environment.GetEnvironmentVariable(
+                EncryptionKeyEnvironmentVariable,
+                EnvironmentVariableTarget.User);
+        }
         if (string.IsNullOrWhiteSpace(encodedKey))
         {
             throw new InvalidOperationException(
