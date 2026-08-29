@@ -20,7 +20,10 @@ public sealed record RegisterMessage(
     string MachineName,
     string OperatingSystem,
     string ClientVersion,
-    int ReportIntervalSeconds);
+    int ReportIntervalSeconds,
+    string? MacAddress = null,
+    string? IpAddress = null,
+    string? LocalTime = null);
 
 public sealed record DiskMetrics(
     string DiskName,
@@ -37,7 +40,10 @@ public sealed record MetricsMessage(
     string Type,
     string NodeCode,
     DateTime TimestampUtc,
-    IReadOnlyList<DiskMetrics> Disks)
+    IReadOnlyList<DiskMetrics> Disks,
+    string? MacAddress = null,
+    string? IpAddress = null,
+    string? LocalTime = null)
 {
     [JsonIgnore]
     public int DiskCount => Disks.Count;

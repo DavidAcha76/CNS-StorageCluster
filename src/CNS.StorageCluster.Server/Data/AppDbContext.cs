@@ -20,6 +20,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.Status).HasMaxLength(20).IsRequired();
             e.Property(x => x.MachineName).HasMaxLength(200);
             e.Property(x => x.OperatingSystem).HasMaxLength(300);
+            e.Property(x => x.MacAddress).HasMaxLength(50);
+            e.Property(x => x.IpAddress).HasMaxLength(50);
         });
 
         modelBuilder.Entity<MetricRecord>(e =>

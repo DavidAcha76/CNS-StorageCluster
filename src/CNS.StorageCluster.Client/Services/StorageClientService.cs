@@ -89,16 +89,21 @@ public sealed class StorageClientService(string nodeCode, string host, int port,
         using var writer = new StreamWriter(stream, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
         _writer = writer;
 
+        var (mac, ip) = DiskMetricsProvider.GetNetworkIdentity();
+        var localTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         var registration = new RegisterMessage(
             MessageTypes.Register,
             nodeCode,
             Environment.MachineName,
             RuntimeInformation.OSDescription,
             "1.0.0",
-            Volatile.Read(ref _reportIntervalSeconds));
+            Volatile.Read(ref _reportIntervalSeconds),
+            mac,
+            ip,
+            localTime);
         await SendAsync(registration, ct);
         SetConnected(true);
-        Log?.Invoke("Conectado y registrado automáticamente en el nodo central.");
+        Log?.Invoke($"Conectado y registrado automáticamente (IP: {ip}, MAC: {mac}, Hora: {localTime}).");
 
         using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var receive = ReceiveLoopAsync(reader, connectionCts.Token);

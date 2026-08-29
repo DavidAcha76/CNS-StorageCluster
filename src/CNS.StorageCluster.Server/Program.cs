@@ -26,6 +26,12 @@ await using (var scope = app.Services.CreateAsyncScope())
     var factory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
     await using var db = await factory.CreateDbContextAsync();
     await db.Database.EnsureCreatedAsync();
+    try
+    {
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Nodes') AND name = 'MacAddress') ALTER TABLE Nodes ADD MacAddress NVARCHAR(50) NULL;");
+        await db.Database.ExecuteSqlRawAsync("IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('Nodes') AND name = 'IpAddress') ALTER TABLE Nodes ADD IpAddress NVARCHAR(50) NULL;");
+    }
+    catch { }
 }
 
 if (!app.Environment.IsDevelopment())

@@ -88,16 +88,21 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
         await socket.ConnectAsync(endpoint, ct);
         _socket = socket;
 
+        var (mac, ip) = DiskMetricsProvider.GetNetworkIdentity();
+        var localTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
         var registration = new RegisterMessage(
             MessageTypes.Register,
             nodeCode,
             Environment.MachineName,
             RuntimeInformation.OSDescription,
             "1.0.0",
-            Volatile.Read(ref _reportIntervalSeconds));
+            Volatile.Read(ref _reportIntervalSeconds),
+            mac,
+            ip,
+            localTime);
         await SendAsync(registration, ct);
         SetConnected(true);
-        Log?.Invoke("Conectado y registrado automaticamente en el nodo central.");
+        Log?.Invoke($"Conectado y registrado automaticamente (IP: {ip}, MAC: {mac}, Hora: {localTime}).");
 
         using var connectionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var receive = ReceiveLoopAsync(socket, connectionCts.Token);

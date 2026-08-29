@@ -299,6 +299,8 @@ public sealed class TcpServerService(
         node.MachineName = message.MachineName;
         node.OperatingSystem = message.OperatingSystem;
         node.ClientVersion = message.ClientVersion;
+        if (!string.IsNullOrWhiteSpace(message.MacAddress)) node.MacAddress = message.MacAddress;
+        if (!string.IsNullOrWhiteSpace(message.IpAddress)) node.IpAddress = message.IpAddress;
         node.ReportIntervalSeconds = Math.Clamp(message.ReportIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds);
         node.LastSeenUtc = now;
         node.Status = NodeStates.Online;
@@ -311,7 +313,7 @@ public sealed class TcpServerService(
                 NodeId = node.Id,
                 EventType = NodeStates.Online,
                 TimestampUtc = now,
-                Detail = "Cliente registrado/conectado automáticamente."
+                Detail = $"Cliente registrado/conectado automáticamente (IP: {message.IpAddress ?? "-"}, MAC: {message.MacAddress ?? "-"})."
             });
             await db.SaveChangesAsync(ct);
         }
@@ -351,6 +353,8 @@ public sealed class TcpServerService(
         var transitionedOnline = node.Status != NodeStates.Online;
         node.LastSeenUtc = now;
         node.Status = NodeStates.Online;
+        if (!string.IsNullOrWhiteSpace(msg.MacAddress)) node.MacAddress = msg.MacAddress;
+        if (!string.IsNullOrWhiteSpace(msg.IpAddress)) node.IpAddress = msg.IpAddress;
         if (transitionedOnline)
         {
             db.NodeEvents.Add(new NodeEvent
@@ -384,10 +388,13 @@ public sealed class TcpServerService(
 
         var report = string.Format(
             CultureInfo.InvariantCulture,
-            "Reporte de equipo | Nodo: {0} ({1}) | Equipo: {2} | Estado: {3} | Recibido UTC: {4:O} | Reportado UTC: {5:O} | Discos: {6} | Capacidad: {7:0.##}/{8:0.##} GB ({9:0.##} %) | Libre: {10:0.##} GB | IOPS: {11:0.##} ({12}) | Latencia media: {13:0.##} ms | Detalle: {14}",
+            "Reporte de equipo | Nodo: {0} ({1}) | Equipo: {2} | IP: {3} | MAC: {4} | Hora Cliente: {5} | Estado: {6} | Recibido UTC: {7:O} | Reportado UTC: {8:O} | Discos: {9} | Capacidad: {10:0.##}/{11:0.##} GB ({12:0.##} %) | Libre: {13:0.##} GB | IOPS: {14:0.##} ({15}) | Latencia media: {16:0.##} ms | Detalle: {17}",
             node.Code,
             node.RegionName,
             string.IsNullOrWhiteSpace(node.MachineName) ? "sin identificar" : node.MachineName,
+            node.IpAddress ?? "-",
+            node.MacAddress ?? "-",
+            msg.LocalTime ?? "-",
             node.Status,
             now,
             msg.TimestampUtc,
@@ -406,7 +413,7 @@ public sealed class TcpServerService(
 
     private async Task LogRegistrationAsync(RegisterMessage registration, RegionDefinition region, string transport, CancellationToken ct)
     {
-        var report = $"Equipo registrado | Nodo: {region.Code} ({region.Name}) | Equipo: {registration.MachineName} | SO: {registration.OperatingSystem} | Cliente: {registration.ClientVersion} | Intervalo: {Math.Clamp(registration.ReportIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds)}s | Transporte: {transport}";
+        var report = $"Equipo registrado | Nodo: {region.Code} ({region.Name}) | Equipo: {registration.MachineName} | IP: {registration.IpAddress ?? "-"} | MAC: {registration.MacAddress ?? "-"} | Hora Cliente: {registration.LocalTime ?? "-"} | SO: {registration.OperatingSystem} | Cliente: {registration.ClientVersion} | Intervalo: {Math.Clamp(registration.ReportIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds)}s | Transporte: {transport}";
         logger.LogInformation("{Report}", report);
         await reportFileLogger.WriteAsync("INFO", report, ct);
     }
