@@ -134,11 +134,27 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
                     var command = JsonSerializer.Deserialize<CommandMessage>(message, ProtocolJson.Options);
                     if (command is not null)
                     {
-                        var text = $"MENSAJE DEL SERVIDOR: {command.Message}";
-                        Log?.Invoke(text);
-                        await WriteServerLogAsync(text, ct);
-                        await SendAsync(new AckMessage(MessageTypes.Ack, command.CommandId, nodeCode, "Mensaje recibido y guardado en .log", DateTime.UtcNow), ct);
-                        Log?.Invoke("ACK enviado al servidor.");
+                        var isGenerateReport = string.Equals(command.Message?.Trim(), "GENERATE_REPORT", StringComparison.OrdinalIgnoreCase) ||
+                                               command.Message?.Contains("GENERATE_REPORT", StringComparison.OrdinalIgnoreCase) == true ||
+                                               command.Message?.Contains("GENERAR_REPORTE", StringComparison.OrdinalIgnoreCase) == true;
+
+                        if (isGenerateReport)
+                        {
+                            var filePath = await _metricsProvider.GenerateReportFileAsync(nodeCode, host, ct);
+                            var logMsg = $"📄 REPORTE GENERADO: Archivo .txt creado en cliente: {filePath}";
+                            Log?.Invoke(logMsg);
+                            await WriteServerLogAsync(logMsg, ct);
+                            await SendAsync(new AckMessage(MessageTypes.Ack, command.CommandId, nodeCode, $"Reporte .txt generado en cliente: {filePath}", DateTime.UtcNow), ct);
+                            Log?.Invoke("ACK de reporte enviado al servidor.");
+                        }
+                        else
+                        {
+                            var text = $"MENSAJE DEL SERVIDOR: {command.Message}";
+                            Log?.Invoke(text);
+                            await WriteServerLogAsync(text, ct);
+                            await SendAsync(new AckMessage(MessageTypes.Ack, command.CommandId, nodeCode, "Mensaje recibido y guardado en .log", DateTime.UtcNow), ct);
+                            Log?.Invoke("ACK enviado al servidor.");
+                        }
                     }
                     break;
 

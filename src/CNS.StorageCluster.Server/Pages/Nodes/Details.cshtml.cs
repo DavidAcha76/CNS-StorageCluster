@@ -86,6 +86,16 @@ public sealed class DetailsModel(ClusterQueryService query, TcpServerService tcp
         return File(fileBytes, "text/plain; charset=utf-8", fileName);
     }
 
+    public async Task<IActionResult> OnPostGenerateReportOnClientAsync(string code, CancellationToken ct)
+    {
+        var result = await tcp.SendCommandAsync(code, "GENERATE_REPORT", ct);
+        TempData["Flash"] = result.Ok
+            ? "Solicitud enviada por TCP. El cliente generó el archivo .txt localmente y respondió ACK."
+            : result.Detail;
+        TempData["FlashOk"] = result.Ok;
+        return RedirectToPage(new { code });
+    }
+
     public async Task<IActionResult> OnPostSendCommandAsync(string code, string message, CancellationToken ct)
     {
         var result = await tcp.SendCommandAsync(code, message, ct);
