@@ -14,6 +14,7 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
     private CancellationTokenSource? _cts;
     private Task? _runTask;
     private ClientWebSocket? _socket;
+    private TransportCipher? _transportCipher;
     private int _reportIntervalSeconds = Math.Clamp(initialIntervalSeconds, NetworkDefaults.MinimumReportIntervalSeconds, NetworkDefaults.MaximumReportIntervalSeconds);
     private volatile bool _connected;
 
@@ -25,6 +26,7 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
     public Task StartAsync()
     {
         if (_runTask is not null && !_runTask.IsCompleted) return Task.CompletedTask;
+        _transportCipher ??= TransportCipher.FromEnvironment();
         _cts = new CancellationTokenSource();
         _runTask = RunReconnectLoopAsync(_cts.Token);
         return Task.CompletedTask;
@@ -173,7 +175,7 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
     {
         var socket = _socket ?? throw new InvalidOperationException("WebSocket no conectado.");
         var json = ProtocolJson.Serialize(message);
-        var payload = Encoding.UTF8.GetBytes(json);
+        var payload = Encoding.UTF8.GetBytes(Cipher.Encrypt(json));
         await _sendLock.WaitAsync(ct);
         try
         {
@@ -185,7 +187,7 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
         }
     }
 
-    private static async Task<string?> ReceiveWebSocketMessageAsync(ClientWebSocket socket, CancellationToken ct)
+    private async Task<string?> ReceiveWebSocketMessageAsync(ClientWebSocket socket, CancellationToken ct)
     {
         var buffer = new byte[4096];
         using var data = new MemoryStream();
@@ -197,7 +199,7 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
                 throw new InvalidDataException("Se esperaba un mensaje WebSocket de texto.");
 
             data.Write(buffer, 0, result.Count);
-            if (result.EndOfMessage) return Encoding.UTF8.GetString(data.ToArray());
+            if (result.EndOfMessage) return Cipher.Decrypt(Encoding.UTF8.GetString(data.ToArray()));
         }
     }
 
@@ -218,6 +220,9 @@ public sealed class WebSocketStorageClientService(string nodeCode, string host, 
             _logLock.Release();
         }
     }
+
+    private TransportCipher Cipher => _transportCipher ??
+        throw new InvalidOperationException("El cifrado de transporte no estÃ¡ configurado.");
 
     private void SetConnected(bool value)
     {

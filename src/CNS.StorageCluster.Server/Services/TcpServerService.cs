@@ -17,7 +17,8 @@ public sealed class TcpServerService(
     IDbContextFactory<AppDbContext> dbFactory,
     IOptions<TcpServerOptions> options,
     ILogger<TcpServerService> logger,
-    ServerReportFileLogger reportFileLogger) : BackgroundService
+    ServerReportFileLogger reportFileLogger,
+    TransportCipher transportCipher) : BackgroundService
 {
     private readonly TcpServerOptions _options = options.Value;
     private readonly ConcurrentDictionary<string, ClientSession> _sessions = new(StringComparer.OrdinalIgnoreCase);
@@ -67,17 +68,17 @@ public sealed class TcpServerService(
             using var reader = new StreamReader(stream, Encoding.UTF8, false, 4096, leaveOpen: true);
             using var writer = new StreamWriter(stream, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
 
-            var firstLine = await reader.ReadLineAsync(serverToken);
+            var firstLine = await ReceiveTcpMessageAsync(reader, serverToken);
             if (string.IsNullOrWhiteSpace(firstLine) || ProtocolJson.GetMessageType(firstLine) != MessageTypes.Register)
             {
-                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "El primer mensaje debe ser REGISTER.")));
+                await SendTcpMessageAsync(writer, ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "El primer mensaje debe ser REGISTER.")), serverToken);
                 return;
             }
 
             var registration = JsonSerializer.Deserialize<RegisterMessage>(firstLine, ProtocolJson.Options);
             if (registration is null || !RegionCatalog.TryGet(registration.NodeCode, out var region))
             {
-                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "Código regional inválido. Use una de las 9 regionales configuradas.")));
+                await SendTcpMessageAsync(writer, ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "Código regional inválido. Use una de las 9 regionales configuradas.")), serverToken);
                 return;
             }
 
@@ -85,25 +86,25 @@ public sealed class TcpServerService(
 
             if (_sessions.ContainsKey(registeredCode))
             {
-                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(
+                await SendTcpMessageAsync(writer, ProtocolJson.Serialize(new ErrorMessage(
                     MessageTypes.Error,
-                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")));
+                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")), serverToken);
                 logger.LogWarning("Conexión TCP rechazada para {Code}: ya existe una sesión activa", registeredCode);
                 return;
             }
 
             if (_sessions.Count >= RegionCatalog.All.Count)
             {
-                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "El cluster ya tiene 9 clientes conectados.")));
+                await SendTcpMessageAsync(writer, ProtocolJson.Serialize(new ErrorMessage(MessageTypes.Error, "El cluster ya tiene 9 clientes conectados.")), serverToken);
                 return;
             }
 
-            var session = new ClientSession(registeredCode, client, writer);
+            var session = new ClientSession(registeredCode, client, writer, transportCipher);
             if (!_sessions.TryAdd(registeredCode, session))
             {
-                await writer.WriteLineAsync(ProtocolJson.Serialize(new ErrorMessage(
+                await SendTcpMessageAsync(writer, ProtocolJson.Serialize(new ErrorMessage(
                     MessageTypes.Error,
-                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")));
+                    $"Acceso denegado: la regional {registeredCode} ya tiene una sesión activa. Se conserva la conexión existente.")), serverToken);
                 logger.LogWarning("Conexión TCP rechazada para {Code}: otra conexión ganó el registro", registeredCode);
                 return;
             }
@@ -114,7 +115,7 @@ public sealed class TcpServerService(
 
             while (!serverToken.IsCancellationRequested && client.Connected)
             {
-                var line = await reader.ReadLineAsync(serverToken);
+                var line = await ReceiveTcpMessageAsync(reader, serverToken);
                 if (line is null) break;
                 if (string.IsNullOrWhiteSpace(line)) continue;
                 await ProcessClientMessageAsync(registeredCode, line, serverToken);
@@ -181,7 +182,7 @@ public sealed class TcpServerService(
                 return;
             }
 
-            var session = new ClientSession(registeredCode, socket);
+            var session = new ClientSession(registeredCode, socket, transportCipher);
             if (!_sessions.TryAdd(registeredCode, session))
             {
                 await SendWebSocketMessageAsync(socket, ProtocolJson.Serialize(new ErrorMessage(
@@ -255,13 +256,25 @@ public sealed class TcpServerService(
         }
     }
 
-    private static async Task SendWebSocketMessageAsync(WebSocket socket, string json, CancellationToken ct)
+    private async Task SendTcpMessageAsync(StreamWriter writer, string json, CancellationToken ct)
     {
-        var payload = Encoding.UTF8.GetBytes(json);
+        await writer.WriteLineAsync(transportCipher.Encrypt(json).AsMemory(), ct);
+        await writer.FlushAsync(ct);
+    }
+
+    private async Task<string?> ReceiveTcpMessageAsync(StreamReader reader, CancellationToken ct)
+    {
+        var encryptedEnvelope = await reader.ReadLineAsync(ct);
+        return encryptedEnvelope is null ? null : transportCipher.Decrypt(encryptedEnvelope);
+    }
+
+    private async Task SendWebSocketMessageAsync(WebSocket socket, string json, CancellationToken ct)
+    {
+        var payload = Encoding.UTF8.GetBytes(transportCipher.Encrypt(json));
         await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, ct);
     }
 
-    private static async Task<string?> ReceiveWebSocketMessageAsync(WebSocket socket, CancellationToken ct)
+    private async Task<string?> ReceiveWebSocketMessageAsync(WebSocket socket, CancellationToken ct)
     {
         var buffer = new byte[4096];
         using var data = new MemoryStream();
@@ -273,7 +286,7 @@ public sealed class TcpServerService(
                 throw new InvalidDataException("Se esperaba un mensaje WebSocket de texto.");
 
             data.Write(buffer, 0, result.Count);
-            if (result.EndOfMessage) return Encoding.UTF8.GetString(data.ToArray());
+            if (result.EndOfMessage) return transportCipher.Decrypt(Encoding.UTF8.GetString(data.ToArray()));
         }
     }
 

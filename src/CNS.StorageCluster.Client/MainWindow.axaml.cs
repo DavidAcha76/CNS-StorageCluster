@@ -97,7 +97,21 @@ public sealed partial class MainWindow : Window
         SetConnectionVisual("CONECTANDO", "#D97706");
         var transport = port == NetworkDefaults.WebSocketPort ? "WSS" : "TCP";
         AddLog($"Iniciando cliente {region.Name} ({region.Code}) por {transport} contra {host}:{port}...");
-        await _client.StartAsync();
+        try
+        {
+            await _client.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            AddLog($"No se puede iniciar la conexiÃ³n cifrada: {ex.Message}");
+            _client = null;
+            ConnectButton.IsEnabled = true;
+            DisconnectButton.IsEnabled = false;
+            RegionCombo.IsEnabled = true;
+            ServerHostText.IsEnabled = true;
+            ServerPortText.IsEnabled = true;
+            SetConnectionVisual("DESCONECTADO", "#8A98A3");
+        }
     }
 
     private async void Disconnect_Click(object? sender, RoutedEventArgs e)
