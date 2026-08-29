@@ -11,6 +11,7 @@ namespace CNS.StorageCluster.Shared;
 public sealed class TransportCipher
 {
     public const string EncryptionKeyEnvironmentVariable = "CNS_STORAGE_CLUSTER_ENCRYPTION_KEY";
+    public const string EncryptionEnabledEnvironmentVariable = "CNS_STORAGE_CLUSTER_ENABLE_ENCRYPTION";
 
     private const string EnvelopePrefix = "CNS1:";
     private const int KeySizeBytes = 32;
@@ -20,12 +21,16 @@ public sealed class TransportCipher
     private const string LocalKeyFileName = "transport-key.base64";
     private static readonly byte[] AssociatedData = "CNS.StorageCluster.Transport.v1"u8.ToArray();
 
-    private readonly byte[] _key;
+    private readonly byte[]? _key;
+    private readonly bool _plaintextMode;
 
     private TransportCipher(byte[] key) => _key = key;
+    private TransportCipher() => _plaintextMode = true;
 
     public static TransportCipher FromEnvironment()
     {
+        if (!IsEncryptionEnabled()) return new TransportCipher();
+
         var encodedKey = Environment.GetEnvironmentVariable(EncryptionKeyEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(encodedKey) && OperatingSystem.IsWindows())
         {
@@ -43,6 +48,12 @@ public sealed class TransportCipher
 
         return FromBase64Key(encodedKey);
     }
+
+    private static bool IsEncryptionEnabled() =>
+        string.Equals(
+            Environment.GetEnvironmentVariable(EncryptionEnabledEnvironmentVariable),
+            "1",
+            StringComparison.Ordinal);
 
     private static string GetOrCreateLocalKey()
     {
@@ -113,6 +124,7 @@ public sealed class TransportCipher
     public string Encrypt(string plaintext)
     {
         ArgumentNullException.ThrowIfNull(plaintext);
+        if (_plaintextMode) return plaintext;
 
         var plaintextBytes = Encoding.UTF8.GetBytes(plaintext);
         if (plaintextBytes.Length > MaximumPlaintextBytes)
@@ -124,7 +136,7 @@ public sealed class TransportCipher
         var ciphertext = new byte[plaintextBytes.Length];
         var tag = new byte[TagSizeBytes];
 
-        using (var aes = new AesGcm(_key, TagSizeBytes))
+        using (var aes = new AesGcm(_key!, TagSizeBytes))
         {
             aes.Encrypt(nonce, plaintextBytes, ciphertext, tag, AssociatedData);
         }
@@ -139,6 +151,7 @@ public sealed class TransportCipher
     public string Decrypt(string encryptedEnvelope)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(encryptedEnvelope);
+        if (_plaintextMode) return encryptedEnvelope;
         if (!encryptedEnvelope.StartsWith(EnvelopePrefix, StringComparison.Ordinal))
         {
             throw new InvalidDataException("Se recibió un mensaje sin el formato de transporte cifrado esperado.");
@@ -168,7 +181,7 @@ public sealed class TransportCipher
 
         var ciphertextLength = envelope.Length - NonceSizeBytes - TagSizeBytes;
         var plaintext = new byte[ciphertextLength];
-        using (var aes = new AesGcm(_key, TagSizeBytes))
+        using (var aes = new AesGcm(_key!, TagSizeBytes))
         {
             aes.Decrypt(
                 envelope.AsSpan(0, NonceSizeBytes),

@@ -1,8 +1,18 @@
 # Cifrado del transporte cliente-servidor
 
-Todos los mensajes de aplicacion entre los clientes y el servidor se cifran con AES-256-GCM antes de enviarse por TCP o WebSocket. El JSON actual del protocolo (`REGISTER`, `METRICS`, `COMMAND`, `ACK`, `CONFIG_INTERVAL`, `CLIENT_CONFIG` y `ERROR`) se conserva dentro del sobre cifrado.
+Con el cifrado activado, todos los mensajes de aplicacion entre los clientes y el servidor se cifran con AES-256-GCM antes de enviarse por TCP o WebSocket. El JSON actual del protocolo (`REGISTER`, `METRICS`, `COMMAND`, `ACK`, `CONFIG_INTERVAL`, `CLIENT_CONFIG` y `ERROR`) se conserva dentro del sobre cifrado.
 
 La red solo transporta mensajes con el formato `CNS1:` seguido de Base64 de `nonce + tag + ciphertext`. El prefijo no contiene datos de negocio y el resto no revela el JSON ni las metricas. Cada mensaje utiliza un nonce aleatorio de 96 bits y un tag de autenticacion de 128 bits.
+
+## Modo temporal de compatibilidad
+
+Mientras el servidor hosteado antiguo siga activo, el transporte funciona en texto plano por defecto para no interrumpir las pruebas restantes. Para activar el cifrado cuando servidor y clientes actualizados ya esten publicados, configure en todos:
+
+```powershell
+$env:CNS_STORAGE_CLUSTER_ENABLE_ENCRYPTION = '1'
+```
+
+Al activarlo, se vuelve obligatorio usar la misma clave AES-256-GCM en todos los extremos conforme a las secciones siguientes.
 
 ## Clave compartida para instalaciones distribuidas
 
